@@ -1,12 +1,14 @@
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.src.auth.deps import get_optional_user
 from apps.api.src.db.session import get_db
+from apps.api.src.models.chunk import DocumentChunk
 from apps.api.src.models.document import Document
 from apps.api.src.models.organization import Organization
 from apps.api.src.models.user import User
@@ -25,6 +27,17 @@ class DocumentResponse(BaseModel):
     status: str
     chunk_count: int
     error_message: str | None = None
+
+
+class DocumentChunkResponse(BaseModel):
+    id: uuid.UUID
+    chunk_index: int
+    section_title: str | None = None
+    section_path: str | None = None
+    page_number: int | None = None
+    content: str
+    token_count: int
+    chunk_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post("/upload", response_model=DocumentResponse)
@@ -160,3 +173,88 @@ async def get_document(
         chunk_count=doc.chunk_count,
         error_message=doc.error_message,
     )
+
+
+@router.get("/{document_id}/chunks", response_model=list[DocumentChunkResponse])
+async def get_document_chunks(
+    document_id: uuid.UUID,
+    org_id: uuid.UUID | None = None,
+    current_user: User | None = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[DocumentChunkResponse]:
+    """Retrieves all chunks belonging to a document, ordered by chunk index."""
+    effective_org_id = current_user.org_id if current_user else org_id
+    if not effective_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organization ID required",
+        )
+
+    # First verify document ownership
+    doc_stmt = select(Document).where(
+        Document.id == document_id,
+        Document.org_id == effective_org_id,
+    )
+    doc_res = await db.execute(doc_stmt)
+    if not doc_res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    stmt = (
+        select(DocumentChunk)
+        .where(
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.org_id == effective_org_id,
+        )
+        .order_by(DocumentChunk.chunk_index.asc())
+    )
+    res = await db.execute(stmt)
+    chunks = res.scalars().all()
+
+    return [
+        DocumentChunkResponse(
+            id=c.id,
+            chunk_index=c.chunk_index,
+            section_title=c.section_title,
+            section_path=c.section_path,
+            page_number=c.page_number,
+            content=c.content,
+            token_count=c.token_count,
+            chunk_metadata=c.chunk_metadata,
+        )
+        for c in chunks
+    ]
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    document_id: uuid.UUID,
+    org_id: uuid.UUID | None = None,
+    current_user: User | None = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Deletes a document and its associated chunks for the authenticated organization."""
+    effective_org_id = current_user.org_id if current_user else org_id
+    if not effective_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organization ID required",
+        )
+
+    stmt = select(Document).where(
+        Document.id == document_id,
+        Document.org_id == effective_org_id,
+    )
+    doc_res = await db.execute(stmt)
+    doc = doc_res.scalar_one_or_none()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    await db.delete(doc)
+    await db.commit()

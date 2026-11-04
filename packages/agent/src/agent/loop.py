@@ -3,6 +3,7 @@
 import json
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import structlog
@@ -240,6 +241,199 @@ class AgentLoop:
             provider=provider_used,
             model=model_used,
         )
+
+    async def run_stream(
+        self,
+        org_id: uuid.UUID,
+        query: str,
+        user_id: uuid.UUID | None = None,
+        session_id: str | None = None,
+        preferred_provider: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Streams live agent reasoning steps, tool activations, and response tokens."""
+        start_time = time.monotonic()
+        trace_id = uuid.uuid4()
+
+        messages: list[ChatMessage] = [
+            ChatMessage(role="system", content=SYSTEM_PROMPT),
+            ChatMessage(role="user", content=query),
+        ]
+
+        steps: list[AgentStep] = []
+        retrieved_chunks_accumulator: list[dict[str, Any]] = []
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        final_answer = ""
+        provider_used = "unknown"
+        model_used = "unknown"
+        execution_error: str | None = None
+
+        yield {
+            "event": "start",
+            "data": {"trace_id": str(trace_id), "query": query},
+        }
+
+        for step_idx in range(1, self.max_steps + 1):
+            elapsed = time.monotonic() - start_time
+            if elapsed > self.timeout_seconds:
+                final_answer = (
+                    "I was unable to complete the research within the allowed execution time."
+                )
+                yield {
+                    "event": "timeout",
+                    "data": {"message": "Execution time limit reached."},
+                }
+                break
+
+            step_start = time.monotonic()
+            step = AgentStep(step_index=step_idx)
+            yield {
+                "event": "step_start",
+                "data": {"step_index": step_idx},
+            }
+
+            try:
+                llm_resp = await self.gateway.generate_with_tools(
+                    messages=messages,
+                    tools=self.tool_definitions,
+                    temperature=0.0,
+                    preferred_provider=preferred_provider,
+                )
+
+                provider_used = llm_resp.provider
+                model_used = llm_resp.model
+                total_prompt_tokens += llm_resp.usage.prompt_tokens
+                total_completion_tokens += llm_resp.usage.completion_tokens
+
+                if llm_resp.tool_calls:
+                    messages.append(
+                        ChatMessage(
+                            role="assistant",
+                            content=llm_resp.content,
+                            tool_calls=llm_resp.tool_calls,
+                        )
+                    )
+
+                    for tc in llm_resp.tool_calls:
+                        parsed_args = tc.get_parsed_arguments()
+                        step.tool_calls.append(
+                            {
+                                "id": tc.id,
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            }
+                        )
+
+                        yield {
+                            "event": "tool_start",
+                            "data": {
+                                "step_index": step_idx,
+                                "tool_name": tc.function.name,
+                                "arguments": parsed_args,
+                            },
+                        }
+
+                        tool_out = await self._execute_tool(org_id, tc)
+                        step.tool_results.append(
+                            {
+                                "tool_call_id": tc.id,
+                                "tool_name": tc.function.name,
+                                "success": tool_out.get("success", False),
+                                "output": tool_out,
+                            }
+                        )
+
+                        if tc.function.name == "search_documents" and isinstance(
+                            tool_out.get("data"), list
+                        ):
+                            retrieved_chunks_accumulator.extend(tool_out["data"])
+
+                        yield {
+                            "event": "tool_complete",
+                            "data": {
+                                "step_index": step_idx,
+                                "tool_name": tc.function.name,
+                                "success": tool_out.get("success", False),
+                            },
+                        }
+
+                        messages.append(
+                            ChatMessage(
+                                role="tool",
+                                tool_call_id=tc.id,
+                                name=tc.function.name,
+                                content=json.dumps(tool_out),
+                            )
+                        )
+
+                    step.latency_ms = round((time.monotonic() - step_start) * 1000, 2)
+                    steps.append(step)
+
+                else:
+                    final_answer = llm_resp.content or "No response generated."
+                    step.latency_ms = round((time.monotonic() - step_start) * 1000, 2)
+                    steps.append(step)
+                    break
+
+            except Exception as e:
+                execution_error = str(e)
+                final_answer = f"Agent encountered an internal error during reasoning: {e}"
+                yield {"event": "error", "data": {"error": str(e)}}
+                break
+
+        if not final_answer:
+            final_answer = "Reached maximum reasoning step limit without finding sufficient evidence to conclude."
+
+        yield {"event": "synthesis_start", "data": {}}
+
+        # Stream out words for realistic responsive UI rendering
+        words = final_answer.split(" ")
+        for i, word in enumerate(words):
+            delta = word if i == 0 else " " + word
+            yield {"event": "token", "data": {"delta": delta}}
+
+        refused = is_refusal(final_answer)
+        citations = extract_citations(final_answer, retrieved_chunks=retrieved_chunks_accumulator)
+        total_latency_ms = round((time.monotonic() - start_time) * 1000, 2)
+        total_tokens = total_prompt_tokens + total_completion_tokens
+
+        await self._persist_trace(
+            trace_id=trace_id,
+            org_id=org_id,
+            user_id=user_id,
+            session_id=session_id,
+            query=query,
+            final_answer=final_answer,
+            refused=refused,
+            citations=citations,
+            steps=steps,
+            retrieved_chunks_count=len(retrieved_chunks_accumulator),
+            provider=provider_used,
+            model=model_used,
+            prompt_tokens=total_prompt_tokens,
+            completion_tokens=total_completion_tokens,
+            total_tokens=total_tokens,
+            latency_ms=total_latency_ms,
+            error=execution_error,
+        )
+
+        final_response = AgentResponse(
+            query=query,
+            final_answer=final_answer,
+            refused=refused,
+            citations=citations,
+            trace_id=str(trace_id),
+            steps_count=len(steps),
+            tokens_total=total_tokens,
+            latency_ms=total_latency_ms,
+            provider=provider_used,
+            model=model_used,
+        )
+
+        yield {
+            "event": "done",
+            "data": final_response.model_dump(),
+        }
 
     async def _execute_tool(self, org_id: uuid.UUID, tool_call: ToolCall) -> dict[str, Any]:
         """Safely dispatches and executes a tool call."""

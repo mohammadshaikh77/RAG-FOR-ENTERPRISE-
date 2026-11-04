@@ -38,6 +38,8 @@ redisdata/
 apps/web/node_modules/
 apps/web/dist/
 apps/web/.turbo/
+apps/web/test-results/
+apps/web/playwright-report/
 
 # Eval artifacts & logs
 eval/results/runs/

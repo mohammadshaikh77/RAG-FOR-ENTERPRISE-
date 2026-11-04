@@ -1,4 +1,4 @@
-.PHONY: up down build test lint format eval demo-data clean help
+.PHONY: up down build test lint format eval demo-data clean web test-web test-e2e help
 
 # Default target
 all: help
@@ -47,4 +47,14 @@ clean:
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
 	find . -type d -name ".ruff_cache" -exec rm -rf {} +
 	find . -type d -name ".mypy_cache" -exec rm -rf {} +
+
+web:
+	cd apps/web && npm run dev -- --port 3001
+
+test-web:
+	cd apps/web && npm test
+
+test-e2e:
+	cd apps/web && npx playwright test
+
 

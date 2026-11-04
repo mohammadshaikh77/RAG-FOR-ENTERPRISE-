@@ -1,6 +1,9 @@
 """API router for agent execution and reasoning trace inspection."""
 
+import json
 import uuid
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 
 from agent.citations import Citation
@@ -11,6 +14,7 @@ from agent.tools.search import SearchDocumentsTool
 from agent.tools.section import GetSectionTool
 from agent.tools.structured import QueryStructuredDataTool
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from llm.cache import LLMCache
 from llm.gateway import LLMGateway
 from llm.providers.base import BaseLLMProvider
@@ -57,6 +61,12 @@ class AgentQueryResponse(BaseModel):
     latency_ms: float
     provider: str
     model: str
+
+
+class FeedbackRequest(BaseModel):
+    trace_id: uuid.UUID
+    rating: int = Field(..., ge=-1, le=1, description="1 for positive, -1 for negative")
+    comment: str | None = Field(None, max_length=1000)
 
 
 class AgentTraceSummary(BaseModel):
@@ -169,6 +179,73 @@ async def query_agent(
         session_id=payload.session_id,
         preferred_provider=payload.preferred_provider,
     )
+
+
+@router.post("/query/stream")
+async def query_agent_stream(
+    payload: AgentQueryRequest,
+    current_org_id: uuid.UUID = Depends(get_current_org),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> StreamingResponse:
+    """Streams the agent reasoning progress, tool invocations, and response tokens via SSE."""
+    agent_loop = build_agent_loop(settings)
+    agent_loop.max_steps = payload.max_steps
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        try:
+            async for chunk in agent_loop.run_stream(
+                org_id=current_org_id,
+                query=payload.query,
+                user_id=current_user.id,
+                session_id=payload.session_id,
+                preferred_provider=payload.preferred_provider,
+            ):
+                event_name = chunk.get("event", "message")
+                data_str = json.dumps(chunk.get("data", {}))
+                yield f"event: {event_name}\ndata: {data_str}\n\n"
+        except Exception as e:
+            err_data = json.dumps({"error": str(e)})
+            yield f"event: error\ndata: {err_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/feedback", status_code=status.HTTP_200_OK)
+async def submit_feedback(
+    payload: FeedbackRequest,
+    current_org_id: uuid.UUID = Depends(get_current_org),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Records user thumbs up/down and optional comment for a trace."""
+    stmt = select(AgentTrace).where(
+        AgentTrace.id == payload.trace_id,
+        AgentTrace.org_id == current_org_id,
+    )
+    result = await db.execute(stmt)
+    trace = result.scalar_one_or_none()
+
+    if not trace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trace not found",
+        )
+
+    trace.feedback = {
+        "rating": payload.rating,
+        "comment": payload.comment,
+        "submitted_at": datetime.now(UTC).isoformat(),
+    }
+    await db.commit()
+    return {"status": "success", "message": "Feedback submitted successfully"}
 
 
 @router.get("/traces", response_model=list[AgentTraceSummary])

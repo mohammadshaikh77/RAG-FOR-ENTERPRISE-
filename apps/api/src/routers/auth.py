@@ -37,6 +37,12 @@ class CreateMemberRequest(BaseModel):
     role: UserRole = UserRole.MEMBER
 
 
+class OrganizationDetailResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+
+
 class UserResponse(BaseModel):
     id: uuid.UUID
     org_id: uuid.UUID
@@ -44,6 +50,7 @@ class UserResponse(BaseModel):
     full_name: str
     role: str
     is_active: bool
+    organization: OrganizationDetailResponse | None = None
 
 
 class TokenResponse(BaseModel):
@@ -168,8 +175,16 @@ async def login(
 @router.get("/me", response_model=UserResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     """Returns the authenticated user's profile and organization context."""
+    org_stmt = select(Organization).where(Organization.id == current_user.org_id)
+    org_result = await db.execute(org_stmt)
+    org = org_result.scalar_one_or_none()
+    org_detail = (
+        OrganizationDetailResponse(id=org.id, name=org.name, slug=org.slug) if org else None
+    )
+
     return UserResponse(
         id=current_user.id,
         org_id=current_user.org_id,
@@ -177,6 +192,7 @@ async def get_me(
         full_name=current_user.full_name,
         role=current_user.role.value,
         is_active=current_user.is_active,
+        organization=org_detail,
     )
 
 

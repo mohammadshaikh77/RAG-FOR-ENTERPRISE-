@@ -35,3 +35,4 @@ All acceptance checks pass:
 - **Tenant isolation**: Cross-tenant trace queries return HTTP 404; queries are strictly isolated to tenant documents.
 - **Safe execution**: Calculator blocks malicious arbitrary code injection; structured query blocks SQL injection.
 - **30/30 automated tests pass** across unit, integration, and API suites.
+

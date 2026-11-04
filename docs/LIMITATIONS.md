@@ -28,4 +28,10 @@ This document records architectural boundaries, current operational constraints,
 - **Sequential Tool Execution**: In multi-step reasoning runs, each LLM call and subsequent tool execution adds latency (approx. 300–800 ms per step on Groq, 1–2 s on Gemini). For a 3-step query, total latency ranges from 1.5 s to 5 s.
 - **Max Step Truncation**: When `max_steps` (default 5) is reached before complete synthesis, the agent concludes with available partial evidence or explicit refusal rather than recursing indefinitely.
 
+## 7. Frontend & Browser Capabilities
+- **Plain JavaScript Architecture**: The frontend intentionally uses modern JavaScript (ES6+ / JSX) with JSDoc rather than TypeScript to keep build times ultra-fast (<2s) and eliminate complex compilation toolchains. Type checking relies on FastAPI/Pydantic schemas on the server side and JSDoc contracts on the client.
+- **Client-Side Span Highlighting**: Citations highlight supporting evidence spans using case-insensitive substring matching within the retrieved chunk text. If an LLM slightly adapts punctuation in the quote rather than verbatim copying, the UI highlights the excerpt in a distinct callout card above the chunk text rather than failing silently.
+- **Port 3001 Default**: Vite dev server and Docker web container bind to port 3001 by default to prevent port conflicts on developer machines where 3000 is occupied.
+
+
 

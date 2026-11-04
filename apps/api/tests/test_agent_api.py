@@ -94,3 +94,48 @@ async def test_agent_api_end_to_end_and_isolation() -> None:
         assert list_b_resp.status_code == 200
         traces_b = list_b_resp.json()
         assert len(traces_b) == 0
+
+        # 7. Submit feedback on Org A's trace
+        feedback_resp = await client.post(
+            "/agent/feedback",
+            json={"trace_id": trace_id, "rating": 1, "comment": "Accurate response with citations"},
+            headers=headers_a,
+        )
+        assert feedback_resp.status_code == 200
+
+        # Adversarial check: Org B attempts feedback on Org A's trace
+        bad_feedback = await client.post(
+            "/agent/feedback",
+            json={"trace_id": trace_id, "rating": -1},
+            headers=headers_b,
+        )
+        assert bad_feedback.status_code == 404
+
+        # 8. Test SSE streaming query
+        stream_resp = await client.post("/agent/query/stream", json=query_payload, headers=headers_a)
+        assert stream_resp.status_code == 200
+        assert "text/event-stream" in stream_resp.headers["content-type"]
+        stream_text = stream_resp.text
+        assert "event: start" in stream_text
+        assert "event: done" in stream_text
+
+        # 9. Test document upload, chunk retrieval, and delete
+        upload_resp = await client.post(
+            "/documents/upload",
+            files={"file": ("test_label.txt", b"Heading 1: Indications\nLisinopril is used for hypertension.")},
+            data={"title": "Test Lisinopril Doc"},
+            headers=headers_a,
+        )
+        assert upload_resp.status_code == 200
+        doc_id = upload_resp.json()["id"]
+
+        chunks_resp = await client.get(f"/documents/{doc_id}/chunks", headers=headers_a)
+        assert chunks_resp.status_code == 200
+        assert len(chunks_resp.json()) >= 1
+
+        del_resp = await client.delete(f"/documents/{doc_id}", headers=headers_a)
+        assert del_resp.status_code == 204
+
+        # Verify deleted
+        get_del = await client.get(f"/documents/{doc_id}", headers=headers_a)
+        assert get_del.status_code == 404

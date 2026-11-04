@@ -49,6 +49,7 @@ class AgentTrace(Base):
 
     latency_ms: Mapped[float] = mapped_column(Float, default=0.0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    feedback: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

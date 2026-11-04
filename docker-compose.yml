@@ -77,6 +77,17 @@ services:
       - .:/app
     command: python -m apps.worker.src.worker
 
+  web:
+    build:
+      context: apps/web
+      dockerfile: Dockerfile
+    container_name: cite-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3001}:80"
+    depends_on:
+      - api
+
 volumes:
   pgdata:
   redisdata:

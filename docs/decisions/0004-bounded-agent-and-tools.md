@@ -31,3 +31,4 @@ Unconstrained agent loops risk infinite recursion loops, high latency, token quo
 ## Consequences
 - Guaranteed upper bound on latency and token consumption per query.
 - Full trace persistence for downstream LLM-as-a-judge evaluation and human audit.
+
