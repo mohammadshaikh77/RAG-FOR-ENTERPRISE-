@@ -1,0 +1,45 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Docker & local data
+pgdata/
+redisdata/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Frontend
+apps/web/node_modules/
+apps/web/dist/
+apps/web/.turbo/
+
+# Eval artifacts & logs
+eval/results/runs/
+logs/
+*.log
