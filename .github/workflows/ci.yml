@@ -10,6 +10,31 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cite_user
+          POSTGRES_PASSWORD: cite_password
+          POSTGRES_DB: cite_db
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6381:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,14 +50,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
 
+      - name: Initialize DB Schema
+        env:
+          DATABASE_URL: postgresql+asyncpg://cite_user:cite_password@localhost:5434/cite_db
+        run: |
+          python apps/api/src/db/init_db.py
+
       - name: Run Ruff Lint
         run: |
           ruff check .
 
       - name: Run Type Check (Mypy)
         run: |
-          mypy apps/api/src apps/worker/src
+          mypy apps/api/src apps/worker/src packages/rag/src
 
       - name: Run Unit Tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://cite_user:cite_password@localhost:5434/cite_db
+          REDIS_URL: redis://localhost:6381/0
         run: |
-          pytest -v --cov=apps/api/src
+          pytest -v
+

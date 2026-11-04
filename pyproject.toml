@@ -23,6 +23,11 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
+    "beautifulsoup4>=4.12.0",
+    "pypdf>=4.1.0",
+    "sentence-transformers>=2.6.0",
+    "aiofiles>=23.2.1",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
@@ -47,7 +52,8 @@ minversion = "7.0"
 addopts = "-ra -q --asyncio-mode=auto"
 testpaths = ["apps/api/tests", "tests"]
 pythonpath = [".", "apps/api/src", "packages/llm/src", "packages/rag/src", "packages/agent/src"]
-asyncio_default_fixture_loop_scope = "function"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 [tool.ruff]
 target-version = "py311"

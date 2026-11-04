@@ -1,0 +1,66 @@
+{
+  "spl_product_data_elements": [
+    "Azithromycin Azithromycin AZITHROMYCIN DIHYDRATE AZITHROMYCIN ANHYDROUS FD&C RED NO. 40 HYDROXYPROPYL CELLULOSE (90000 WAMW) SODIUM PHOSPHATE, TRIBASIC, ANHYDROUS SUCROSE XANTHAN GUM WHITE TO LIGHT PINK CHERRY RIPE BANANA Azithromycin Azithromycin AZITHROMYCIN DIHYDRATE AZITHROMYCIN ANHYDROUS FD&C RED NO. 40 HYDROXYPROPYL CELLULOSE (90000 WAMW) SODIUM PHOSPHATE, TRIBASIC, ANHYDROUS SUCROSE XANTHAN GUM WHITE TO LIGHT PINK CHERRY RIPE BANANA Azithromycin Azithromycin AZITHROMYCIN DIHYDRATE AZITHROMYCIN ANHYDROUS FD&C RED NO. 40 HYDROXYPROPYL CELLULOSE (90000 WAMW) SODIUM PHOSPHATE, TRIBASIC, ANHYDROUS SUCROSE XANTHAN GUM WHITE TO LIGHT PINK CHERRY RIPE BANANA Azithromycin Azithromycin AZITHROMYCIN DIHYDRATE AZITHROMYCIN ANHYDROUS FD&C RED NO. 40 HYDROXYPROPYL CELLULOSE (90000 WAMW) SODIUM PHOSPHATE, TRIBASIC, ANHYDROUS SUCROSE XANTHAN GUM WHITE TO LIGHT PINK CHERRY RIPE BANANA"
+  ],
+  "spl_unclassified_section": [
+    ""
+  ],
+  "package_label_principal_display_panel": [
+    "PACKAGE LABEL.PRINCIPAL DISPLAY PANEL NDC 70771-1422-1 Azithromycin for oral suspension, 300 mg 100 mg/5 mL Rx only NDC 70771-1423-2 Azithromycin for oral suspension, 600 mg 200 mg/5 mL Rx only NDC 70771-1424-2 Azithromycin for oral suspension, 900 mg 200 mg/5 mL Rx only NDC 70771-1425-2 Azithromycin for oral suspension, 1200 mg 200 mg/5 mL Rx only Azithromycin oral suspension Azithromycin oral suspension Azithromycin oral suspension Azithromycin oral suspension"
+  ],
+  "set_id": "0b63649d-558c-4250-90ee-af6e1e5c6d2c",
+  "id": "654b77ea-07ad-4747-ac35-5a2eb41f4588",
+  "effective_time": "20250109",
+  "version": "5",
+  "openfda": {
+    "application_number": [
+      "ANDA211147"
+    ],
+    "brand_name": [
+      "Azithromycin"
+    ],
+    "generic_name": [
+      "AZITHROMYCIN"
+    ],
+    "manufacturer_name": [
+      "Zydus Lifesciences Limited"
+    ],
+    "product_ndc": [
+      "70771-1422",
+      "70771-1423",
+      "70771-1424",
+      "70771-1425"
+    ],
+    "product_type": [
+      "HUMAN PRESCRIPTION DRUG"
+    ],
+    "route": [
+      "ORAL"
+    ],
+    "substance_name": [
+      "AZITHROMYCIN DIHYDRATE"
+    ],
+    "rxcui": [
+      "141963",
+      "308459"
+    ],
+    "spl_id": [
+      "654b77ea-07ad-4747-ac35-5a2eb41f4588"
+    ],
+    "spl_set_id": [
+      "0b63649d-558c-4250-90ee-af6e1e5c6d2c"
+    ],
+    "package_ndc": [
+      "70771-1422-1",
+      "70771-1423-2",
+      "70771-1424-2",
+      "70771-1425-2"
+    ],
+    "is_original_packager": [
+      true
+    ],
+    "unii": [
+      "5FD1131I7S"
+    ]
+  }
+}

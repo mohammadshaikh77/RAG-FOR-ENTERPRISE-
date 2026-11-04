@@ -34,3 +34,4 @@ Project "Cite" requires an enterprise-style, multi-tenant document intelligence 
 ## Consequences
 - Single container manages both document metadata and semantic vectors.
 - Low memory consumption (<600 MB total stack) leaves ample room for developer OS processes.
+

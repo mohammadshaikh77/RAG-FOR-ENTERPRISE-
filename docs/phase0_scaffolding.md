@@ -19,3 +19,4 @@
 ## Verification & Testing
 - Unit tests cover configuration parsing, default fallbacks, structured logging initialization, root endpoints, and degraded vs healthy states for the `/health` endpoint.
 - Code conforms strictly to ruff linter and mypy type checks.
+

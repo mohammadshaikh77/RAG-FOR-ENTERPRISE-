@@ -16,6 +16,11 @@ This document records architectural boundaries, current operational constraints,
 
 ## 3. Ingestion & Document Parsing
 - **Scanned Document OCR**: Current parsers process digital text, structured PDFs, and HTML. Optical Character Recognition (OCR) for scanned image-only PDFs is not included in the default zero-dependency pipeline to avoid heavy system dependencies (like Tesseract binaries).
+- **Multilingual Full-Text Stemming**: PostgreSQL full-text search currently uses the `'english'` dictionary. Non-English drug labels or international filings will index without language-specific stemming unless dictionary configurations are parameterized.
 
 ## 4. Multi-Tenancy Scoping
 - **Session-Based Isolation**: Tenant isolation is enforced via repository query filters and Postgres Row-Level Security (RLS). Superuser / direct database connections bypass RLS; application connections must always run under non-superuser credentials with `app.current_org_id` bound.
+
+## 5. Retrieval & RRF Calibration
+- **RRF Score Interpretation**: Reciprocal Rank Fusion scores reflect relative combined ordering ($RRF\_score \in [0, 0.033]$ for $k=60$) rather than absolute cosine similarities. Downstream confidence thresholds must calibrate against RRF ranges rather than expecting normalized $0.0 - 1.0$ dot products.
+
