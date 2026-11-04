@@ -101,3 +101,4 @@ cd apps/web && npm run lint
 docker compose up -d web
 ```
 Accessible in browser at `http://localhost:3001`.
+

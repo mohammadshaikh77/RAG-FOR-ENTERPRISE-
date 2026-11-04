@@ -112,7 +112,9 @@ async def test_agent_api_end_to_end_and_isolation() -> None:
         assert bad_feedback.status_code == 404
 
         # 8. Test SSE streaming query
-        stream_resp = await client.post("/agent/query/stream", json=query_payload, headers=headers_a)
+        stream_resp = await client.post(
+            "/agent/query/stream", json=query_payload, headers=headers_a
+        )
         assert stream_resp.status_code == 200
         assert "text/event-stream" in stream_resp.headers["content-type"]
         stream_text = stream_resp.text
@@ -122,7 +124,12 @@ async def test_agent_api_end_to_end_and_isolation() -> None:
         # 9. Test document upload, chunk retrieval, and delete
         upload_resp = await client.post(
             "/documents/upload",
-            files={"file": ("test_label.txt", b"Heading 1: Indications\nLisinopril is used for hypertension.")},
+            files={
+                "file": (
+                    "test_label.txt",
+                    b"Heading 1: Indications\nLisinopril is used for hypertension.",
+                )
+            },
             data={"title": "Test Lisinopril Doc"},
             headers=headers_a,
         )

@@ -28,6 +28,7 @@ dependencies = [
     "sentence-transformers>=2.6.0",
     "aiofiles>=23.2.1",
     "python-multipart>=0.0.9",
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]

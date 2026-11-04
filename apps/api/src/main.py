@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import structlog
+from cite_mcp.server import create_mcp_server
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -83,6 +84,10 @@ app.include_router(auth_router)
 app.include_router(documents_router)
 app.include_router(retrieval_router)
 app.include_router(agent_router)
+
+# Mount Model Context Protocol (MCP) SSE server
+mcp_server = create_mcp_server()
+app.mount("/mcp", mcp_server.sse_app())
 
 
 @app.get("/")

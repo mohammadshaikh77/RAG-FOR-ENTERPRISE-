@@ -1,4 +1,4 @@
-.PHONY: up down build test lint format eval demo-data clean web test-web test-e2e help
+.PHONY: up down build test lint format eval demo-data clean web test-web test-e2e mcp help
 
 # Default target
 all: help
@@ -30,7 +30,7 @@ test:
 
 lint:
 	.venv/bin/ruff check .
-	.venv/bin/mypy apps/api/src apps/worker/src
+	.venv/bin/mypy apps/api/src apps/worker/src packages/mcp/src
 
 format:
 	.venv/bin/ruff format .
@@ -56,5 +56,9 @@ test-web:
 
 test-e2e:
 	cd apps/web && npx playwright test
+
+mcp:
+	PYTHONPATH=".:packages/agent/src:packages/llm/src:packages/rag/src:packages/mcp/src" .venv/bin/python scripts/run_mcp_server.py
+
 
 
