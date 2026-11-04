@@ -26,3 +26,4 @@
 ## Acceptance Checks Passed
 - Retrieval API returns accurate scored chunks on real drug queries (e.g. *"What is the boxed warning for naproxen?"* correctly retrieves the Boxed Warning chunk as rank 1/2).
 - Unit and integration tests verify all 4 ablation switches, section filtering, and mock embedding paths.
+

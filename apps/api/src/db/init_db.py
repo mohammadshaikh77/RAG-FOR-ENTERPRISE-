@@ -7,9 +7,8 @@ from apps.api.src.logging import get_logger
 from apps.api.src.models.base import Base
 from apps.api.src.models.chunk import DocumentChunk  # noqa: F401
 from apps.api.src.models.document import Document  # noqa: F401
-
-# Import all models to ensure registered on Base.metadata
 from apps.api.src.models.organization import Organization  # noqa: F401
+from apps.api.src.models.user import User  # noqa: F401
 
 logger = get_logger("cite.db.init")
 

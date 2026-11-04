@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.src.config import get_settings
 from apps.api.src.logging import get_logger, setup_logging
+from apps.api.src.routers.auth import router as auth_router
 from apps.api.src.routers.documents import router as documents_router
 from apps.api.src.routers.health import router as health_router
 from apps.api.src.routers.retrieval import router as retrieval_router
@@ -77,6 +78,7 @@ async def request_context_middleware(request: Request, call_next: Callable[..., 
 
 # Include routers
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(documents_router)
 app.include_router(retrieval_router)
 

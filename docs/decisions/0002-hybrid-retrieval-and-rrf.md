@@ -30,3 +30,4 @@ For an enterprise pharma RAG platform, answers must have high precision on speci
 ## Consequences
 - 4 ablation modes available per query (`vector`, `keyword`, `hybrid`, `hybrid_rerank`), enabling automated quality evaluation and ablation studies in Phase 6.
 - Zero external vector DB dependencies; single ACID PostgreSQL container manages relational schemas, vectors, and full-text search.
+

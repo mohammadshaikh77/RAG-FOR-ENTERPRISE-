@@ -23,3 +23,4 @@
 - `make demo-data` runs end-to-end and successfully ingests real FDA drug labels.
 - Re-running the script verifies idempotency (`duplicates_skipped=42, new_ingested=0`).
 - Automated tests cover chunk boundary splits, parser edge cases, and idempotency guarantees.
+
