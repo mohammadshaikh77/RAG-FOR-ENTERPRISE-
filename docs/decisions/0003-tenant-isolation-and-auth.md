@@ -31,3 +31,4 @@ Furthermore, authentication and authorization must run with zero paid external s
 - Every retrieval query strictly scopes vectors and full-text searches to the caller's tenant.
 - Zero risk of cross-tenant data leakage in hybrid search or agent tool executions.
 - Comprehensive adversarial tests in `test_multi_tenancy.py` run continuously in CI to prevent regression.
+

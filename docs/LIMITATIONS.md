@@ -24,3 +24,8 @@ This document records architectural boundaries, current operational constraints,
 ## 5. Retrieval & RRF Calibration
 - **RRF Score Interpretation**: Reciprocal Rank Fusion scores reflect relative combined ordering ($RRF\_score \in [0, 0.033]$ for $k=60$) rather than absolute cosine similarities. Downstream confidence thresholds must calibrate against RRF ranges rather than expecting normalized $0.0 - 1.0$ dot products.
 
+## 6. Agent Tool-Calling Bounds & Latency
+- **Sequential Tool Execution**: In multi-step reasoning runs, each LLM call and subsequent tool execution adds latency (approx. 300–800 ms per step on Groq, 1–2 s on Gemini). For a 3-step query, total latency ranges from 1.5 s to 5 s.
+- **Max Step Truncation**: When `max_steps` (default 5) is reached before complete synthesis, the agent concludes with available partial evidence or explicit refusal rather than recursing indefinitely.
+
+

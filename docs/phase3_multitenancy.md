@@ -30,3 +30,4 @@ The automated test suite in `apps/api/tests/test_multi_tenancy.py` executes 6 co
 6. **Multi-Tenant Retrieval Verification**: Org A searches for its own document $\rightarrow$ Returns rank 1 match with exact score and citation metadata.
 
 All 18 tests pass in the project CI suite.
+

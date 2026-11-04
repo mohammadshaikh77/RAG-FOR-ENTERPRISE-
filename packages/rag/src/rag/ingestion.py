@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.src.logging import get_logger
 from apps.api.src.models.chunk import DocumentChunk
 from apps.api.src.models.document import Document, DocumentStatus
+from apps.api.src.models.drug_metadata import DrugMetadata
 from packages.rag.src.rag.chunker import StructureAwareChunker
 from packages.rag.src.rag.embeddings import Embedder, get_embedder
 from packages.rag.src.rag.parsers.base import ParsedDocument
@@ -166,6 +167,49 @@ class IngestionService:
 
             session.add_all(chunks_to_insert)
             doc.chunk_count = len(chunks_to_insert)
+
+            # Extract and persist structured drug metadata if available
+            if "drug_name" in merged_metadata or "generic_name" in merged_metadata:
+                raw_class = merged_metadata.get("drug_class") or merged_metadata.get("drug_classes")
+                if isinstance(raw_class, list):
+                    drug_class_str = raw_class[0] if raw_class else "Unknown Class"
+                else:
+                    drug_class_str = str(raw_class or "Unknown Class")
+
+                boxed_warning_summary = None
+                if parsed.sections:
+                    for s in parsed.sections:
+                        if "boxed warning" in s.title.lower():
+                            boxed_warning_summary = s.content[:500]
+                            break
+
+                routes = merged_metadata.get("routes")
+                route_str = (
+                    routes[0]
+                    if (isinstance(routes, list) and routes)
+                    else (str(routes) if routes else None)
+                )
+                ndcs = merged_metadata.get("ndc")
+                ndc_str = (
+                    ndcs[0] if (isinstance(ndcs, list) and ndcs) else (str(ndcs) if ndcs else None)
+                )
+
+                drug_meta = DrugMetadata(
+                    id=uuid.uuid4(),
+                    org_id=org_id,
+                    document_id=doc.id,
+                    drug_name=merged_metadata.get("drug_name", doc.title),
+                    brand_name=merged_metadata.get("drug_name", doc.title),
+                    generic_name=merged_metadata.get("generic_name", doc.title),
+                    drug_class=drug_class_str,
+                    has_boxed_warning=bool(merged_metadata.get("boxed_warning_present", False)),
+                    route=route_str,
+                    product_ndc=ndc_str,
+                    manufacturer_name=merged_metadata.get("manufacturer"),
+                    boxed_warning_summary=boxed_warning_summary,
+                )
+                session.add(drug_meta)
+
             doc.status = DocumentStatus.COMPLETED
             await session.commit()
             await session.refresh(doc)
