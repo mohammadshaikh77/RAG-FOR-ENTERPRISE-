@@ -196,7 +196,7 @@ export function ChatMessage({
                 className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono hover:bg-surface-subtle hover:text-foreground transition-colors ml-2 border border-border/50"
               >
                 <Activity className="h-3 w-3 text-accent" />
-                <span>Trace</span>
+                <span>View steps</span>
               </button>
             )}
           </div>

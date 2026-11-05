@@ -17,21 +17,25 @@ from apps.api.src.models.agent_trace import AgentTrace
 
 logger = structlog.get_logger(__name__)
 
-SYSTEM_PROMPT = """You are "Cite", an enterprise clinical document-intelligence and retrieval agent.
-Your primary directive is to provide rigorous, grounded, cited answers using exclusively the evidence retrieved through your tools.
+SYSTEM_PROMPT = """You are "Cite", an AI document question-answering assistant.
+Your goal is to provide accurate, readable, and fully grounded answers using exclusively the evidence retrieved from uploaded documents.
 
-You have access to 5 specialized tools:
-1. `search_documents(query, section_filter, top_k)`: Primary tool to retrieve relevant text chunks from clinical drug labels.
-2. `get_section(document_id, section_name)`: Retrieves full unabridged text of a specific section (e.g., 'Boxed Warning', 'Contraindications', 'Dosage and Administration').
-3. `compare_documents(doc_a_id, doc_b_id, topic)`: Retrieves and pairs clinical sections between two documents for comparison.
-4. `query_structured_data(query_type, parameters)`: Executes read-only queries over drug metadata (classes, boxed warnings, routes, NDCs).
-5. `calculator(expression)`: Safely evaluates arithmetic expressions (dosages, weight adjustments).
+You have access to 5 tools:
+1. `search_documents(query, section_filter, top_k)`: Primary tool to retrieve relevant text passages from uploaded documents.
+2. `get_section(document_id, section_name)`: Retrieves the text of a specific section (e.g., 'Boxed Warning', 'Contraindications', 'Dosage and Administration').
+3. `compare_documents(doc_a_id, doc_b_id, topic)`: Pairs sections between two documents for comparison.
+4. `query_structured_data(query_type, parameters)`: Retrieves metadata (document classes, routes, identifiers).
+5. `calculator(expression)`: Safely evaluates arithmetic expressions (dosages, unit conversions).
 
-NON-NEGOTIABLE RULES:
-1. GROUNDING & EVIDENCE: Base every statement and claim on information returned by your tools. Do not speculate, extrapolate, or rely on internal ungrounded knowledge.
-2. MANDATORY CITATIONS: In your final answer, cite your sources using the format:
+RULES:
+1. GROUNDING & EVIDENCE: Base every statement and claim strictly on information returned by your tools. Do not speculate, guess, or extrapolate beyond the retrieved text.
+2. WRITING STYLE: Directly address the user's question in simple, natural English. Organize your answer with clear paragraphs or bullet points where appropriate.
+3. MANDATORY CITATIONS: Cite your sources for factual claims using the exact format:
    [Document: <Document Title> | Section: <Section Name> | "<exact quoted supporting span>"]
-3. REFUSAL RULE: If your search finds no relevant evidence or if the evidence is insufficient to answer the question with certainty, you MUST state that you cannot answer the question based on the provided documents. NEVER invent or guess clinical facts.
+   The quoted span must be a direct, verbatim excerpt from the retrieved document text.
+4. REFUSAL RULE: If your search finds no relevant evidence or if the evidence is insufficient to answer the question, state honestly:
+   "I couldn't find enough information to answer this question in your uploaded documents."
+   Never invent information to make an answer appear complete.
 """
 
 
@@ -171,13 +175,14 @@ class AgentLoop:
                         ):
                             retrieved_chunks_accumulator.extend(tool_out["data"])
 
-                        # Feed tool result back into conversation
+                        # Feed clean tool result back into conversation
+                        raw_payload = json.dumps(tool_out)
                         messages.append(
                             ChatMessage(
                                 role="tool",
                                 tool_call_id=tc.id,
                                 name=tc.function.name,
-                                content=json.dumps(tool_out),
+                                content=raw_payload,
                             )
                         )
 
@@ -357,12 +362,13 @@ class AgentLoop:
                             },
                         }
 
+                        raw_payload = json.dumps(tool_out)
                         messages.append(
                             ChatMessage(
                                 role="tool",
                                 tool_call_id=tc.id,
                                 name=tc.function.name,
-                                content=json.dumps(tool_out),
+                                content=raw_payload,
                             )
                         )
 
@@ -506,3 +512,42 @@ class AgentLoop:
                 logger.info("Agent trace persisted", trace_id=str(trace_id), org_id=str(org_id))
         except Exception as e:
             logger.error("Failed to persist agent trace", error=str(e), trace_id=str(trace_id))
+
+    async def _enqueue_for_review(
+        self,
+        org_id: uuid.UUID,
+        trace_id: uuid.UUID,
+        query: str,
+        answer: str,
+        retrieved_chunks: list[dict[str, Any]],
+        trigger_reason: str,
+        confidence_score: float | None = None,
+    ) -> None:
+        """Enqueues an item into the human review queue."""
+        try:
+            from apps.api.src.models.review_queue import ReviewQueueItem
+
+            async with self.session_factory() as session:
+                item = ReviewQueueItem(
+                    id=uuid.uuid4(),
+                    org_id=org_id,
+                    trace_id=trace_id,
+                    query=query,
+                    answer=answer,
+                    retrieved_chunks=retrieved_chunks,
+                    trigger_reason=trigger_reason,
+                    confidence_score=confidence_score,
+                    status="pending",
+                )
+                session.add(item)
+                await session.commit()
+                logger.info(
+                    "Query enqueued for human review",
+                    org_id=str(org_id),
+                    trigger_reason=trigger_reason,
+                    trace_id=str(trace_id),
+                )
+        except Exception as e:
+            logger.error(
+                "Failed to enqueue item for human review", error=str(e), trace_id=str(trace_id)
+            )

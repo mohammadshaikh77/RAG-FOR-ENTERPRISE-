@@ -13,24 +13,24 @@ export function RefusalCard({ message, query: _query }) {
             Not found in your documents
           </h4>
           <span className="text-[11px] text-muted-foreground">
-            Strict Hallucination Guardrail Active
+            Information unavailable in uploaded documents
           </span>
         </div>
       </div>
 
       <p className="text-xs text-foreground/90 leading-relaxed">
         {message ||
-          "I cannot answer this question based on the provided documents as no relevant clinical evidence was found."}
+          "I couldn't find enough information to answer this question in your uploaded documents."}
       </p>
 
       <div className="pt-2 border-t border-warning/20 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground font-mono">
         <span className="flex items-center gap-1">
           <FileSearch className="h-3 w-3 text-muted-foreground" />
-          Retrieved 0 high-confidence chunks
+          No matching passages found
         </span>
         <span className="flex items-center gap-1">
           <Sparkles className="h-3 w-3 text-accent" />
-          Zero ungrounded speculation permitted
+          Cite will not invent answers when evidence is missing
         </span>
       </div>
     </div>

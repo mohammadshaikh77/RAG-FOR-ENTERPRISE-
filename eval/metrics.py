@@ -9,6 +9,7 @@ Contains programmatic metrics for:
 """
 
 import json
+import random
 import re
 import statistics
 from dataclasses import dataclass
@@ -19,6 +20,26 @@ from llm.gateway import LLMGateway
 from llm.types import ChatMessage
 
 
+def compute_bootstrap_ci(
+    values: list[float], n_bootstrap: int = 1000, ci: float = 0.95, seed: int = 42
+) -> tuple[float, float]:
+    """Computes non-parametric bootstrap confidence interval (lower, upper)."""
+    if not values:
+        return (0.0, 0.0)
+    rng = random.Random(seed)
+    n = len(values)
+    means: list[float] = []
+    for _ in range(n_bootstrap):
+        sample = [rng.choice(values) for _ in range(n)]
+        means.append(sum(sample) / n)
+    means.sort()
+    lower_idx = int(((1.0 - ci) / 2.0) * n_bootstrap)
+    upper_idx = int((ci + (1.0 - ci) / 2.0) * n_bootstrap)
+    lower = means[max(0, lower_idx)]
+    upper = means[min(upper_idx, n_bootstrap - 1)]
+    return (round(lower, 4), round(upper, 4))
+
+
 @dataclass
 class RetrievalMetrics:
     hit_rate_at_3: float = 0.0
@@ -27,6 +48,9 @@ class RetrievalMetrics:
     recall_at_5: float = 0.0
     mrr: float = 0.0
     total_evaluated: int = 0
+    hit_rate_at_5_ci: tuple[float, float] = (0.0, 0.0)
+    recall_at_5_ci: tuple[float, float] = (0.0, 0.0)
+    mrr_ci: tuple[float, float] = (0.0, 0.0)
 
 
 @dataclass
@@ -81,9 +105,10 @@ def compute_retrieval_metrics(
     total = 0
     hits_3 = 0
     hits_5 = 0
-    recalls_3 = []
-    recalls_5 = []
-    reciprocal_ranks = []
+    binary_hits_5: list[float] = []
+    recalls_3: list[float] = []
+    recalls_5: list[float] = []
+    reciprocal_ranks: list[float] = []
 
     for item, retrieved in zip(eval_items, predictions, strict=False):
         if item.get("should_refuse"):
@@ -111,6 +136,9 @@ def compute_retrieval_metrics(
         has_hit_5 = bool(top_5_doc_ids.intersection(gt_doc_ids))
         if has_hit_5:
             hits_5 += 1
+            binary_hits_5.append(1.0)
+        else:
+            binary_hits_5.append(0.0)
 
         matched_5 = len(top_5_doc_ids.intersection(gt_doc_ids))
         recalls_5.append(matched_5 / max(1, len(gt_doc_ids)))
@@ -133,6 +161,9 @@ def compute_retrieval_metrics(
         recall_at_5=round(statistics.mean(recalls_5) if recalls_5 else 0.0, 4),
         mrr=round(statistics.mean(reciprocal_ranks) if reciprocal_ranks else 0.0, 4),
         total_evaluated=total,
+        hit_rate_at_5_ci=compute_bootstrap_ci(binary_hits_5),
+        recall_at_5_ci=compute_bootstrap_ci(recalls_5),
+        mrr_ci=compute_bootstrap_ci(reciprocal_ranks),
     )
 
 

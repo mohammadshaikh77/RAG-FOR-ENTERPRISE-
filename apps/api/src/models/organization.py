@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String
+from sqlalchemy import Boolean, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +20,7 @@ class Organization(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    pii_redaction_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     users: Mapped[list["User"]] = relationship(
         "User", back_populates="organization", cascade="all, delete-orphan"

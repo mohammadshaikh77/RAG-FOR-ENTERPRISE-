@@ -13,24 +13,24 @@ import { DocumentDrawer } from "../components/documents/DocumentDrawer.jsx";
 
 const WELCOME_STARTERS = [
   {
-    title: "Pregnancy Warnings",
-    query: "What is the boxed warning for Lisinopril?",
-    desc: "Inspect ACE-inhibitor fetal toxicity boxed warning.",
+    title: "Pregnancy Warning",
+    query: "What is the boxed warning for lisinopril regarding pregnancy?",
+    desc: "Check pregnancy and fetal toxicity warnings.",
   },
   {
-    title: "Cardiovascular Contraindications",
-    query: "What are the contraindications of Metoprolol Tartrate?",
-    desc: "Review severe bradycardia and heart block warnings.",
+    title: "Side Effects",
+    query: "What are the common side effects of lisinopril?",
+    desc: "Find reported adverse reactions and symptoms.",
   },
   {
-    title: "Side-by-Side Comparison",
-    query: "Compare indications and warnings between Celecoxib and Naproxen",
-    desc: "Align clinical sections between two NSAIDs.",
+    title: "Kidney Precautions",
+    query: "What precautions are mentioned for patients with kidney problems?",
+    desc: "Review renal impairment guidance and monitoring.",
   },
   {
-    title: "Refusal Guardrail Test",
-    query: "What is the approved dosage for martian-fake-drug-xyz?",
-    desc: "Verify strict refusal on unsupported questions.",
+    title: "Unsupported Question",
+    query: "What is the recommended dosage for martian-fake-drug-xyz?",
+    desc: "See how Cite honestly says when info is missing.",
   },
 ];
 
@@ -178,9 +178,9 @@ export function ChatPage() {
         {/* Top Chat Action Bar */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-2 border-b border-border/40 bg-surface/50 text-xs">
           <div className="flex items-center gap-2 text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
-            <span className="font-mono text-[11px]">
-              Hybrid Retrieval + 5 Bounded Tools Active
+            <span className="h-2 w-2 rounded-full bg-success" />
+            <span className="text-[11px] font-medium text-foreground">
+              Ready
             </span>
           </div>
 
@@ -208,11 +208,10 @@ export function ChatPage() {
 
               <div className="space-y-2">
                 <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                  Clinical Document Intelligence
+                  Ask questions
                 </h2>
                 <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
-                  Ask grounded questions over FDA drug labels, contraindications,
-                  boxed warnings, and dosing regimens.
+                  Ask questions about the documents you have uploaded.
                 </p>
               </div>
 

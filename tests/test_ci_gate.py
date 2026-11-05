@@ -37,10 +37,14 @@ def test_ci_gate_within_tolerance() -> None:
     baseline = {
         "mrr": 0.85,
         "recall_at_5": 0.88,
+        "hit_rate_at_5": 0.95,
+        "hit_rate_at_3": 0.90,
     }
     current = RetrievalMetrics(
         mrr=0.835,  # 1.5% drop (<= 3%)
         recall_at_5=0.86,  # 2% drop (<= 3%)
+        hit_rate_at_5=0.94,
+        hit_rate_at_3=0.89,
     )
 
     is_pass, failures = check_gate(current, baseline, threshold=0.03)
@@ -53,10 +57,14 @@ def test_ci_gate_catches_regression() -> None:
     baseline = {
         "mrr": 0.85,
         "recall_at_5": 0.90,
+        "hit_rate_at_5": 0.95,
+        "hit_rate_at_3": 0.90,
     }
     current = RetrievalMetrics(
         mrr=0.80,  # 5% drop (> 3% threshold)
         recall_at_5=0.89,  # 1% drop
+        hit_rate_at_5=0.95,
+        hit_rate_at_3=0.90,
     )
 
     is_pass, failures = check_gate(current, baseline, threshold=0.03)
@@ -64,6 +72,26 @@ def test_ci_gate_catches_regression() -> None:
     assert len(failures) == 1
     assert "REGRESSION in mrr" in failures[0]
     assert "delta=-0.0500" in failures[0]
+
+
+def test_ci_gate_catches_floor_violation() -> None:
+    """Verifies CI gate triggers failure when metric is below absolute floor."""
+    baseline = {
+        "mrr": 0.50,
+        "recall_at_5": 0.75,
+        "hit_rate_at_5": 0.80,
+        "hit_rate_at_3": 0.65,
+    }
+    current = RetrievalMetrics(
+        mrr=0.40,  # Below absolute floor of 0.45
+        recall_at_5=0.75,
+        hit_rate_at_5=0.80,
+        hit_rate_at_3=0.65,
+    )
+
+    is_pass, failures = check_gate(current, baseline, threshold=0.03)
+    assert is_pass is False
+    assert any("ABSOLUTE FLOOR VIOLATION in mrr" in f for f in failures)
 
 
 class DegradedMockRetriever(HybridRetriever):

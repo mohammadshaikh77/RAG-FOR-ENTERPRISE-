@@ -9,6 +9,7 @@ from apps.api.src.logging import get_logger
 from apps.api.src.models.chunk import DocumentChunk
 from apps.api.src.models.document import Document, DocumentStatus
 from apps.api.src.models.drug_metadata import DrugMetadata
+from apps.api.src.models.organization import Organization
 from packages.rag.src.rag.chunker import StructureAwareChunker
 from packages.rag.src.rag.embeddings import Embedder, get_embedder
 from packages.rag.src.rag.parsers.base import ParsedDocument

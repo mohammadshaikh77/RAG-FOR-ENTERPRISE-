@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { ArrowUp, CornerDownLeft, Sparkles } from "lucide-react";
 
 const SUGGESTIONS = [
-  "What is the boxed warning for Lisinopril?",
-  "What are the contraindications of Metoprolol Tartrate?",
-  "Compare indications between Celecoxib and Naproxen",
-  "Which drugs belong to the NSAID class?",
+  "What is the boxed warning for lisinopril regarding pregnancy?",
+  "What are the common side effects of lisinopril?",
+  "What precautions are mentioned for kidney problems?",
+  "What are the contraindications of lisinopril?",
 ];
 
 export function MessageComposer({ onSend, isLoading }) {
@@ -71,7 +71,7 @@ export function MessageComposer({ onSend, isLoading }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a question grounded in FDA drug labels... (Enter to send, Shift+Enter for newline)"
+          placeholder="Ask something about your documents..."
           rows={1}
           disabled={isLoading}
           className="w-full resize-none bg-transparent px-4 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none max-h-40 min-h-[48px]"

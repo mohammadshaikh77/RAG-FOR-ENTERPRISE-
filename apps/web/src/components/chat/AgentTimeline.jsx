@@ -20,11 +20,11 @@ const TOOL_ICONS = {
 };
 
 const TOOL_LABELS = {
-  search_documents: "Searching clinical labels",
+  search_documents: "Searching documents",
   get_section: "Reading section content",
-  compare_documents: "Comparing drug labels",
-  query_structured_data: "Querying structured metadata",
-  calculator: "Computing dosage calculation",
+  compare_documents: "Comparing documents",
+  query_structured_data: "Looking up details",
+  calculator: "Calculating values",
 };
 
 export function AgentTimeline({ steps = [], isStreaming = false }) {
@@ -79,7 +79,7 @@ export function AgentTimeline({ steps = [], isStreaming = false }) {
             <ChevronRight className="h-3.5 w-3.5 text-accent" />
           )}
           <span className="font-medium text-foreground">
-            How I got this answer
+            Steps taken
           </span>
           <span className="text-muted-foreground">
             ({totalToolCalls} {totalToolCalls === 1 ? "tool used" : "tools used"}

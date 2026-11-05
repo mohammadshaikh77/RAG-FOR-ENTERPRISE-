@@ -43,6 +43,7 @@ apps/web/playwright-report/
 
 # Eval artifacts & logs
 eval/results/runs/
+eval/.cache/
 logs/
 *.log
 

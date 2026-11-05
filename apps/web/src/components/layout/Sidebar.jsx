@@ -12,10 +12,9 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { cn } from "../../lib/utils.js";
 
 const NAV_ITEMS = [
-  { label: "Research Chat", path: "/", icon: MessageSquare },
+  { label: "Ask", path: "/", icon: MessageSquare },
   { label: "Documents", path: "/documents", icon: FileText },
-  { label: "Evaluation", path: "/evaluation", icon: Scale, badge: "Phase 6" },
-  { label: "Safety & Review", path: "/review", icon: ShieldAlert, badge: "Phase 7" },
+  { label: "How well does Cite work?", path: "/evaluation", icon: Scale },
   { label: "Settings", path: "/settings", icon: Settings },
 ];
 
@@ -39,22 +38,22 @@ export function Sidebar({ className }) {
             Cite
           </span>
           <span className="text-[10px] text-muted-foreground mt-0.5 tracking-wider uppercase font-mono">
-            Document Intelligence
+            Document Q&A
           </span>
         </div>
       </div>
 
-      {/* Tenant / Organization Chip */}
+      {/* Workspace Chip */}
       <div className="px-4 py-3 border-b border-border/40 bg-surface-subtle/50">
         <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-          Tenant Workspace
+          Workspace
         </div>
         <div className="flex items-center justify-between">
           <span
             className="text-xs font-semibold text-foreground truncate max-w-[150px]"
-            title={organization?.name || "Demo Tenant"}
+            title={organization?.name || "Demo Pharma"}
           >
-            {organization?.name || "Demo Tenant"}
+            {organization?.name || "Demo Pharma"}
           </span>
           <span className="h-2 w-2 rounded-full bg-success ring-4 ring-success/20" />
         </div>

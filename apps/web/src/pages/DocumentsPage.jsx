@@ -40,11 +40,10 @@ export function DocumentsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-foreground">
-            Document Repository
+            Your documents
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Upload PDF, HTML, or text files for structure-aware parsing and
-            hybrid indexing.
+            Upload documents and ask questions about their contents.
           </p>
         </div>
 

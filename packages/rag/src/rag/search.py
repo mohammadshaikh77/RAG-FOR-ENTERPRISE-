@@ -1,4 +1,5 @@
 import enum
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -13,6 +14,141 @@ from packages.rag.src.rag.embeddings import Embedder, get_embedder
 from packages.rag.src.rag.reranker import Reranker, get_reranker
 
 logger = get_logger("cite.rag.search")
+
+STOP_WORDS = {
+    "a",
+    "about",
+    "above",
+    "after",
+    "again",
+    "against",
+    "all",
+    "am",
+    "an",
+    "and",
+    "any",
+    "are",
+    "as",
+    "at",
+    "be",
+    "because",
+    "been",
+    "before",
+    "being",
+    "below",
+    "between",
+    "both",
+    "but",
+    "by",
+    "can",
+    "did",
+    "do",
+    "does",
+    "doing",
+    "don't",
+    "down",
+    "during",
+    "each",
+    "few",
+    "for",
+    "from",
+    "further",
+    "had",
+    "has",
+    "have",
+    "having",
+    "he",
+    "her",
+    "here",
+    "hers",
+    "herself",
+    "him",
+    "himself",
+    "his",
+    "how",
+    "i",
+    "if",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "itself",
+    "just",
+    "me",
+    "more",
+    "most",
+    "my",
+    "myself",
+    "no",
+    "nor",
+    "not",
+    "now",
+    "of",
+    "off",
+    "on",
+    "once",
+    "only",
+    "or",
+    "other",
+    "our",
+    "ours",
+    "ourselves",
+    "out",
+    "over",
+    "own",
+    "same",
+    "she",
+    "should",
+    "so",
+    "some",
+    "such",
+    "than",
+    "that",
+    "the",
+    "their",
+    "theirs",
+    "them",
+    "themselves",
+    "then",
+    "there",
+    "these",
+    "they",
+    "this",
+    "those",
+    "through",
+    "to",
+    "too",
+    "under",
+    "until",
+    "up",
+    "very",
+    "was",
+    "we",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "while",
+    "who",
+    "whom",
+    "why",
+    "will",
+    "with",
+    "you",
+    "your",
+    "yours",
+    "yourself",
+    "yourselves",
+    "tell",
+    "explain",
+    "describe",
+    "regarding",
+    "show",
+    "list",
+    "give",
+}
 
 
 class RetrievalMode(enum.StrEnum):
@@ -82,7 +218,29 @@ class HybridRetriever:
 
         stmt = stmt.order_by(cosine_distance).limit(k)
         result = await session.execute(stmt)
-        return [(row[0], row[1], float(row[2])) for row in result.all()]
+        rows: list[tuple[DocumentChunk, str, float]] = []
+        for row in result.all():
+            chunk, title, sim = row[0], row[1], float(row[2])
+            if chunk.chunk_metadata and chunk.chunk_metadata.get("is_flagged_injection"):
+                sim = sim * 0.1
+            rows.append((chunk, title, sim))
+        return rows
+
+    def _build_tsquery(self, query: str) -> Any:
+        """Constructs an intelligent full-text query combining websearch syntax and content token OR-matching."""
+        clean_query = query.strip()
+        tokens = re.findall(r"[a-zA-Z0-9]+", clean_query.lower())
+        content_tokens = [t for t in tokens if t not in STOP_WORDS and len(t) > 2]
+        if not content_tokens:
+            content_tokens = tokens
+
+        web_ts = func.websearch_to_tsquery("english", clean_query)
+        if content_tokens:
+            # Join content tokens with OR for broad clinical recall across natural questions
+            or_expr = " | ".join(content_tokens)
+            or_ts = func.to_tsquery("english", or_expr)
+            return web_ts.op("||")(or_ts)
+        return web_ts
 
     async def _search_keyword(
         self,
@@ -93,10 +251,8 @@ class HybridRetriever:
         document_id: uuid.UUID | None = None,
         section: str | None = None,
     ) -> list[tuple[DocumentChunk, str, float]]:
-        """Sparse keyword search using Postgres full-text search with English stemming."""
-        # Clean query for websearch syntax
-        clean_query = query.strip()
-        ts_query = func.websearch_to_tsquery("english", clean_query)
+        """Sparse keyword search using Postgres full-text search with English stemming and OR-ranking."""
+        ts_query = self._build_tsquery(query)
         ts_rank = func.ts_rank_cd(DocumentChunk.tsv_content, ts_query).label("rank_score")
 
         stmt = (
@@ -115,7 +271,13 @@ class HybridRetriever:
 
         stmt = stmt.order_by(desc(ts_rank)).limit(k)
         result = await session.execute(stmt)
-        return [(row[0], row[1], float(row[2])) for row in result.all()]
+        kw_rows: list[tuple[DocumentChunk, str, float]] = []
+        for row in result.all():
+            chunk, title, score = row[0], row[1], float(row[2])
+            if chunk.chunk_metadata and chunk.chunk_metadata.get("is_flagged_injection"):
+                score = score * 0.1
+            kw_rows.append((chunk, title, score))
+        return kw_rows
 
     async def search(
         self,
@@ -136,6 +298,12 @@ class HybridRetriever:
         - hybrid: RRF combination of vector and keyword
         - hybrid_rerank: hybrid search + cross-encoder reranking
         """
+        if isinstance(mode, str):
+            try:
+                mode = RetrievalMode(mode.lower())
+            except ValueError:
+                mode = RetrievalMode.HYBRID
+
         logger.info(
             "Executing retrieval",
             query=query,
@@ -227,6 +395,7 @@ class HybridRetriever:
         # 4. Optional Cross-Encoder Reranking
         if mode == RetrievalMode.HYBRID_RERANK and top_candidates:
             candidate_texts = [chunk_map[cid][0].content for cid in top_candidates]
+            logger.info("Executing cross-encoder reranker", candidates=len(candidate_texts))
             rerank_scores = self.reranker.rerank(query, candidate_texts)
             paired = list(zip(top_candidates, rerank_scores, strict=False))
             # Sort descending by cross-encoder score

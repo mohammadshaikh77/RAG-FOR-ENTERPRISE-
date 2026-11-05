@@ -38,7 +38,7 @@ class GroqProvider(BaseLLMProvider):
         tools: list[ToolDefinition] | None = None,
         temperature: float = 0.0,
         max_tokens: int | None = None,
-        max_retries: int = 2,
+        max_retries: int = 5,
     ) -> LLMResponse:
         if not self.is_available():
             raise RuntimeError("GroqProvider is not configured: GROQ_API_KEY is missing.")
@@ -83,6 +83,10 @@ class GroqProvider(BaseLLMProvider):
 
             except httpx.HTTPStatusError as e:
                 logger.error("Groq HTTP error", status=e.response.status_code, body=e.response.text)
+                if e.response.status_code == 429 and attempt < max_retries:
+                    retry_after = float(e.response.headers.get("Retry-After", 2.0 * (attempt + 1)))
+                    await asyncio.sleep(retry_after)
+                    continue
                 raise
             except Exception as e:
                 logger.error("Groq request exception", error=str(e), attempt=attempt)

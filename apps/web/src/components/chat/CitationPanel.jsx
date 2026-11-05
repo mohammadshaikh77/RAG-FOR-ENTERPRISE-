@@ -28,7 +28,7 @@ export function CitationPanel({
         <div className="space-y-3">
           <div className="p-3 rounded-lg bg-accent-subtle/40 border border-accent/20">
             <span className="text-[10px] uppercase font-mono tracking-wider text-accent font-semibold block mb-1">
-              Quoted Clinical Evidence
+              Quoted Evidence
             </span>
             <p className="text-xs italic text-foreground font-medium">
               "{span}"

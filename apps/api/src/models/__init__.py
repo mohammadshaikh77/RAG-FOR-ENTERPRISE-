@@ -4,6 +4,7 @@ from apps.api.src.models.chunk import DocumentChunk
 from apps.api.src.models.document import Document, DocumentStatus
 from apps.api.src.models.drug_metadata import DrugMetadata
 from apps.api.src.models.organization import Organization
+from apps.api.src.models.review_queue import ReviewQueueItem
 from apps.api.src.models.user import User, UserRole
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "DocumentChunk",
     "DrugMetadata",
     "AgentTrace",
+    "ReviewQueueItem",
 ]

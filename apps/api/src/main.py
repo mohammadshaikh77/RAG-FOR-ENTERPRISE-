@@ -11,12 +11,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.src.config import get_settings
 from apps.api.src.logging import get_logger, setup_logging
+from apps.api.src.middleware.rate_limit import RateLimitMiddleware
 from apps.api.src.routers.agent import router as agent_router
 from apps.api.src.routers.auth import router as auth_router
 from apps.api.src.routers.documents import router as documents_router
 from apps.api.src.routers.eval import router as eval_router
 from apps.api.src.routers.health import router as health_router
 from apps.api.src.routers.retrieval import router as retrieval_router
+from apps.api.src.routers.review_queue import router as review_queue_router
 
 settings = get_settings()
 setup_logging(log_level=settings.log_level, environment=settings.environment)
@@ -85,7 +87,11 @@ app.include_router(auth_router)
 app.include_router(documents_router)
 app.include_router(retrieval_router)
 app.include_router(agent_router)
+app.include_router(review_queue_router)
 app.include_router(eval_router)
+
+# Rate limiting middleware
+app.add_middleware(RateLimitMiddleware, requests_per_minute=120, user_requests_per_minute=60)
 
 # Mount Model Context Protocol (MCP) SSE server
 mcp_server = create_mcp_server()

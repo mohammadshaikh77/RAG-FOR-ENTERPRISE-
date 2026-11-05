@@ -10,6 +10,7 @@ from apps.api.src.models.chunk import DocumentChunk  # noqa: F401
 from apps.api.src.models.document import Document  # noqa: F401
 from apps.api.src.models.drug_metadata import DrugMetadata  # noqa: F401
 from apps.api.src.models.organization import Organization  # noqa: F401
+from apps.api.src.models.review_queue import ReviewQueueItem  # noqa: F401
 from apps.api.src.models.user import User  # noqa: F401
 
 logger = get_logger("cite.db.init")

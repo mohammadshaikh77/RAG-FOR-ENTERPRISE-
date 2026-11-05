@@ -79,6 +79,7 @@ class SearchDocumentsTool(BaseTool):
                         "section_title": r.section_title,
                         "content": r.content,
                         "score": round(r.score, 4),
+                        "is_flagged_injection": bool(r.metadata.get("is_flagged_injection", False)),
                     }
                     for r in results
                 ]

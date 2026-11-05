@@ -38,7 +38,7 @@ class GeminiProvider(BaseLLMProvider):
         tools: list[ToolDefinition] | None = None,
         temperature: float = 0.0,
         max_tokens: int | None = None,
-        max_retries: int = 2,
+        max_retries: int = 5,
     ) -> LLMResponse:
         if not self.is_available():
             raise RuntimeError("GeminiProvider is not configured: GEMINI_API_KEY is missing.")
@@ -65,10 +65,19 @@ class GeminiProvider(BaseLLMProvider):
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     resp = await client.post(url, headers=headers, json=payload)
 
-                    if resp.status_code == 429:
-                        retry_after = float(resp.headers.get("Retry-After", 4.0 * (attempt + 1)))
+                    if resp.status_code in (429, 500, 502, 503, 504):
+                        body_text = resp.text
+                        if "RESOURCE_EXHAUSTED" in body_text or "quota" in body_text.lower():
+                            logger.warning(
+                                "Gemini daily quota exhausted, failing immediately for failover",
+                                status=resp.status_code,
+                            )
+                            resp.raise_for_status()
+
+                        retry_after = float(resp.headers.get("Retry-After", 3.0 * (attempt + 1)))
                         logger.warning(
-                            "Gemini rate limit 429 encountered, backing off",
+                            "Gemini retryable status encountered, backing off",
+                            status=resp.status_code,
                             attempt=attempt,
                             retry_after=retry_after,
                         )
@@ -85,11 +94,19 @@ class GeminiProvider(BaseLLMProvider):
                 logger.error(
                     "Gemini HTTP error", status=e.response.status_code, body=e.response.text
                 )
+                body_lower = e.response.text.lower()
+                if "resource_exhausted" in body_lower or "quota" in body_lower:
+                    logger.warning("Gemini daily quota exhausted, failing immediately for failover")
+                    raise
+
+                if e.response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
+                    await asyncio.sleep(3.0 * (attempt + 1))
+                    continue
                 raise
             except Exception as e:
                 logger.error("Gemini request exception", error=str(e), attempt=attempt)
                 if attempt < max_retries:
-                    await asyncio.sleep(1.5 * (attempt + 1))
+                    await asyncio.sleep(2.0 * (attempt + 1))
                     continue
                 raise
 
@@ -113,6 +130,7 @@ class GeminiProvider(BaseLLMProvider):
                         name=fn.get("name", ""),
                         arguments=fn.get("arguments", "{}"),
                     ),
+                    extra_content=tc.get("extra_content"),
                 )
             )
 

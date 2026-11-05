@@ -19,6 +19,7 @@ class ToolCall(BaseModel):
     id: str
     type: Literal["function"] = "function"
     function: FunctionCall
+    extra_content: dict[str, Any] | None = None
 
     def get_parsed_arguments(self) -> dict[str, Any]:
         """Safely parses arguments JSON into a dictionary."""
@@ -47,8 +48,9 @@ class ChatMessage(BaseModel):
         if self.tool_call_id is not None:
             d["tool_call_id"] = self.tool_call_id
         if self.tool_calls is not None:
-            d["tool_calls"] = [
-                {
+            tc_list = []
+            for tc in self.tool_calls:
+                tc_dict: dict[str, Any] = {
                     "id": tc.id,
                     "type": tc.type,
                     "function": {
@@ -56,8 +58,10 @@ class ChatMessage(BaseModel):
                         "arguments": tc.function.arguments,
                     },
                 }
-                for tc in self.tool_calls
-            ]
+                if tc.extra_content:
+                    tc_dict["extra_content"] = tc.extra_content
+                tc_list.append(tc_dict)
+            d["tool_calls"] = tc_list
         return d
 
 

@@ -44,7 +44,7 @@ export function DocumentTable({
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search documents by title or drug name..."
+            placeholder="Search documents by title..."
             className="w-full h-9 pl-9 pr-3 rounded-lg border border-input bg-surface text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
           />
         </div>
@@ -66,11 +66,7 @@ export function DocumentTable({
                 No documents found
               </p>
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                Upload drug label files above or run{" "}
-                <code className="px-1.5 py-0.5 rounded bg-muted text-foreground font-mono text-[11px]">
-                  make demo-data
-                </code>{" "}
-                in the terminal to ingest the sample FDA labels.
+                Upload a PDF or text file above to get started.
               </p>
             </div>
           </div>
@@ -82,7 +78,7 @@ export function DocumentTable({
                   <th className="px-4 py-3">Document Title</th>
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Chunks</th>
+                  <th className="px-4 py-3 text-right">Sections processed</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>

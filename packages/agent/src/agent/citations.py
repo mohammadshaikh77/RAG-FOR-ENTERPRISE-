@@ -33,6 +33,10 @@ REFUSAL_PHRASES = [
     "provided documents do not contain",
     "insufficient evidence",
     "i am unable to answer",
+    "couldn't find enough information",
+    "could not find enough information",
+    "not found in your documents",
+    "no information available",
 ]
 
 

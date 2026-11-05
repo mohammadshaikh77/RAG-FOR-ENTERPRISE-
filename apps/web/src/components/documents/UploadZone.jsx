@@ -103,11 +103,11 @@ export function UploadZone({ onUploadComplete }) {
 
           <div className="space-y-1">
             <p className="text-sm font-semibold text-foreground">
-              Drop drug labels or documents here, or{" "}
-              <span className="text-accent hover:underline">browse</span>
+              Drop a PDF here or{" "}
+              <span className="text-accent hover:underline">browse your computer</span>
             </p>
             <p className="text-xs text-muted-foreground font-mono">
-              Supported: PDF, Digital Text, HTML, openFDA JSON (up to 15MB)
+              Supported: PDF, Digital Text, HTML (up to 15MB)
             </p>
           </div>
         </div>

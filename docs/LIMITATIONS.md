@@ -1,37 +1,34 @@
-# Cite Platform — Known Limitations & System Boundaries
+# Cite — Known Limitations and System Boundaries
 
-This document records architectural boundaries, current operational constraints, and honest trade-offs across all phases of the Cite platform.
+This document records the architectural boundaries, operational constraints, and known trade-offs of the Cite document question-answering platform.
 
 ---
 
-## 1. Resource & Hardware Boundaries
-- **Local Embedding Execution**: The default embedding model (`sentence-transformers/all-MiniLM-L6-v2`) runs on the host CPU. While CPU inference takes only ~15–30 ms per chunk, large batch ingests (>500 documents) will take several minutes unless chunking/embedding is distributed across multiple worker threads.
-- **Reranker Memory Consumption**: Cross-encoders (`ms-marco-TinyBERT-L-2-v2`) provide superior re-ranking accuracy over raw vector search, but add ~80–120 MB RAM overhead. To ensure 8 GB developer laptops run without swapping, reranking is disabled by default via `ENABLE_RERANKER=false` and must be explicitly enabled for high-accuracy evaluation runs.
-- **Local LLM Demands**: Running 7B/8B models locally via Ollama requires 5–6 GB of unified RAM. For constrained machines, cloud free-tier providers (Groq, Gemini) or Mock modes are recommended.
+## 1. Retrieval & Answer Quality
 
-## 2. API Quotas & Free Tier Caps
-- **Groq Free Tier**: Hard rate limit of 30 RPM (Requests Per Minute) and 14,400 RPD (Requests Per Day) on `llama-3.1-8b-instant`.
-- **Gemini Free Tier**: Capped at 15 RPM and 1,500 RPD on `gemini-1.5-flash`.
-- **Mitigation & Boundary**: The platform implements token-bucket throttling and automatic failover. However, sustained parallel automated evaluation runs can temporarily exhaust free quotas if run without pacing.
+- **Retrieval Coverage & False Refusals:** On our held-out test set, Cite refused 26.7% of valid questions (8 out of 30). This is primarily caused by retrieval misses where the relevant text section was not within the top retrieved chunks, leading the model to accurately state that the document context did not contain enough evidence.
+- **Chunking Boundaries:** Fixed-size chunking can sometimes split connected context across chunk boundaries, impacting retrieval recall for questions that require reasoning across long passages.
+- **Reranking Overhead:** Adding cross-encoder reranking provides marginal MRR improvement on our benchmark but adds ~40ms of latency per query. On small datasets, confidence intervals between hybrid retrieval and reranked retrieval overlap significantly.
 
-## 3. Ingestion & Document Parsing
-- **Scanned Document OCR**: Current parsers process digital text, structured PDFs, and HTML. Optical Character Recognition (OCR) for scanned image-only PDFs is not included in the default zero-dependency pipeline to avoid heavy system dependencies (like Tesseract binaries).
-- **Multilingual Full-Text Stemming**: PostgreSQL full-text search currently uses the `'english'` dictionary. Non-English drug labels or international filings will index without language-specific stemming unless dictionary configurations are parameterized.
+---
 
-## 4. Multi-Tenancy Scoping
-- **Session-Based Isolation**: Tenant isolation is enforced via repository query filters and Postgres Row-Level Security (RLS). Superuser / direct database connections bypass RLS; application connections must always run under non-superuser credentials with `app.current_org_id` bound.
+## 2. Model Dependency & Rate Limits
 
-## 5. Retrieval & RRF Calibration
-- **RRF Score Interpretation**: Reciprocal Rank Fusion scores reflect relative combined ordering ($RRF\_score \in [0, 0.033]$ for $k=60$) rather than absolute cosine similarities. Downstream confidence thresholds must calibrate against RRF ranges rather than expecting normalized $0.0 - 1.0$ dot products.
+- **LLM Provider Availability:** Cite supports both Groq and Gemini APIs, with local fallback for testing. Cloud LLM providers are subject to upstream rate limits and transient 429 errors.
+- **Token Quotas:** On high-throughput workloads, free and standard API tiers may exhaust request or token quotas, requiring rate limiting and bounded backoff.
+- **Model Decoupling in Evaluation:** Automated evaluation metrics scored by an LLM judge are useful for regression testing but remain sensitive to prompt variations and judge model subjectivity.
 
-## 6. Agent Tool-Calling Bounds & Latency
-- **Sequential Tool Execution**: In multi-step reasoning runs, each LLM call and subsequent tool execution adds latency (approx. 300–800 ms per step on Groq, 1–2 s on Gemini). For a 3-step query, total latency ranges from 1.5 s to 5 s.
-- **Max Step Truncation**: When `max_steps` (default 5) is reached before complete synthesis, the agent concludes with available partial evidence or explicit refusal rather than recursing indefinitely.
+---
 
-## 7. Frontend & Browser Capabilities
-- **Plain JavaScript Architecture**: The frontend intentionally uses modern JavaScript (ES6+ / JSX) with JSDoc rather than TypeScript to keep build times ultra-fast (<2s) and eliminate complex compilation toolchains. Type checking relies on FastAPI/Pydantic schemas on the server side and JSDoc contracts on the client.
-- **Client-Side Span Highlighting**: Citations highlight supporting evidence spans using case-insensitive substring matching within the retrieved chunk text. If an LLM slightly adapts punctuation in the quote rather than verbatim copying, the UI highlights the excerpt in a distinct callout card above the chunk text rather than failing silently.
-- **Port 3001 Default**: Vite dev server and Docker web container bind to port 3001 by default to prevent port conflicts on developer machines where 3000 is occupied.
+## 3. Guardrails & Safety Boundaries
 
+- **Pattern-Based PII Redaction:** PII redaction uses regular expressions for common patterns (emails, phone numbers, standard ID formats). While fast and zero-cost, regex pattern matching does not identify contextual personal identifiers like unstructured names or locations.
+- **Prompt Injection Detection:** Chunk and input scanning relies on known injection signatures and prompt delimiters. While effective against direct injection attempts in our regression test set, heuristic pattern matching is not an absolute security guarantee and can potentially be bypassed by novel or obfuscated adversarial prompts.
+- **Human Review Queue:** Items flagged for low confidence, unexpected refusal, or suspected injection require review. Without reviewer triage, unreviewed items will remain pending.
 
+---
 
+## 4. Ingestion & Documents
+
+- **Text Extraction:** Ingestion currently parses digital text from PDFs, HTML, and plain text files. Scanned documents or image-only PDFs without an embedded text layer require optical character recognition (OCR) before ingestion.
+- **Single-Language Focus:** Full-text search leverages PostgreSQL English text search (`tsvector`/`tsquery`). Documents in other languages require appropriate text search configuration.
