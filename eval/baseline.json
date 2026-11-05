@@ -1,0 +1,8 @@
+{
+  "mrr": 0.5389,
+  "recall_at_5": 0.76,
+  "hit_rate_at_5": 0.84,
+  "recall_at_3": 0.6533,
+  "hit_rate_at_3": 0.7333,
+  "total_evaluated": 75
+}

@@ -105,6 +105,7 @@ import asyncio
 from cite_mcp.server import create_mcp_server
 from cite_mcp.client import CiteMCPClient
 
+
 async def main():
     server = create_mcp_server()
     client = CiteMCPClient(server=server)
@@ -113,7 +114,7 @@ async def main():
     results = await client.search(
         query="What is the boxed warning for naproxen?",
         top_k=3,
-        tenant_id="00000000-0000-0000-0000-000000000001"
+        tenant_id="00000000-0000-0000-0000-000000000001",
     )
     print(results)
 
@@ -122,9 +123,10 @@ async def main():
         drug_a="Naproxen",
         drug_b="Celecoxib",
         aspect="indications",
-        tenant_id="00000000-0000-0000-0000-000000000001"
+        tenant_id="00000000-0000-0000-0000-000000000001",
     )
     print(comparison)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -148,3 +150,4 @@ All 8 tests verify:
 6. Multi-tenant isolation (zero leakage between Org A and Org B).
 7. Unauthenticated invocation refusal.
 8. Subprocess stdio connection with `ClientSession`.
+

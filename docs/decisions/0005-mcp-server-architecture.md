@@ -39,3 +39,4 @@ Key architectural challenges:
 - Clean, standard integration with Claude Desktop, Cursor, and any MCP-compliant agent.
 - Verified zero cross-tenant leakage across direct search, section retrieval, and structured queries.
 - Zero extra hosting cost or separate daemon required (runs in-process or via FastAPI mount).
+

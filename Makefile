@@ -1,4 +1,4 @@
-.PHONY: up down build test lint format eval demo-data clean web test-web test-e2e mcp help
+.PHONY: up down build test lint format eval ci-gate demo-data clean web test-web test-e2e mcp help
 
 # Default target
 all: help
@@ -14,6 +14,7 @@ help:
 	@echo "  make format      - Automatically format code using ruff"
 	@echo "  make demo-data   - Download & ingest sample pharma drug labels"
 	@echo "  make eval        - Run the full evaluation harness and output report"
+	@echo "  make ci-gate     - Run fast LLM-free retrieval CI regression check"
 	@echo "  make clean       - Remove caches, temporary files, and volumes"
 
 up:
@@ -40,7 +41,10 @@ demo-data:
 	.venv/bin/python scripts/fetch_demo_data.py
 
 eval:
-	.venv/bin/python eval/harness.py
+	PYTHONPATH=".:packages/agent/src:packages/llm/src:packages/rag/src:packages/mcp/src" .venv/bin/python eval/harness.py
+
+ci-gate:
+	PYTHONPATH=".:packages/agent/src:packages/llm/src:packages/rag/src:packages/mcp/src" .venv/bin/python eval/ci_gate.py
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

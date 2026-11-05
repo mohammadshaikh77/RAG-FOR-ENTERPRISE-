@@ -52,7 +52,7 @@ where = ["apps", "packages"]
 minversion = "7.0"
 addopts = "-ra -q --asyncio-mode=auto"
 testpaths = ["apps/api/tests", "tests"]
-pythonpath = [".", "apps/api/src", "packages/llm/src", "packages/rag/src", "packages/agent/src"]
+pythonpath = [".", "apps/api/src", "packages/llm/src", "packages/rag/src", "packages/agent/src", "packages/mcp/src"]
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 
