@@ -42,7 +42,7 @@ export function ChatMessage({
   };
 
   // Replace text citation brackets [Document: ... | Section: ... | "..."]
-  // with numbered InlineCitation components
+  // with clean numbered InlineCitation components seamlessly inside Markdown
   const renderContentWithCitations = (content) => {
     if (!content) return null;
     const citations = message.citations || [];
@@ -57,67 +57,86 @@ export function ChatMessage({
       );
     }
 
-    // Split text by citation pattern
     const citationRegex =
-      /\[(?:Document:\s*)?([^|]+?)\s*\|\s*(?:Section:\s*)?([^|]+?)\s*\|\s*["“](.+?)["”]\s*\]/gi;
+      /\[(?:Document:\s*)?([^|]+?)\s*\|\s*(?:Section:\s*)?([^|]+?)\s*\|\s*["“]([\s\S]+?)["”]\s*\]/gi;
 
-    let parts = [];
-    let lastIndex = 0;
-    let match;
-    let citationCounter = 1;
+    const citationMap = new Map();
+    let counter = 1;
 
-    while ((match = citationRegex.exec(content)) !== null) {
-      const matchStart = match.index;
-      const matchEnd = citationRegex.lastIndex;
+    // Strip redundant trailing Sources block if present
+    let processed = content.replace(
+      /\n\s*(\*\*Sources?\*\*|Sources?):?\s*(\n\s*[-*]?\s*\[[^\]]+\])+/gi,
+      ""
+    );
 
-      if (matchStart > lastIndex) {
-        parts.push(content.slice(lastIndex, matchStart));
-      }
-
-      const docTitle = match[1].trim();
-      const secTitle = match[2].trim();
-      const span = match[3].trim();
-
-      const existingCitation =
+    processed = processed.replace(citationRegex, (match, docTitle, secTitle, span) => {
+      const cleanSpan = span.trim();
+      const existing =
         citations.find(
           (c) =>
-            c.quoted_span?.toLowerCase().includes(span.toLowerCase()) ||
-            span.toLowerCase().includes(c.quoted_span?.toLowerCase())
+            c.quoted_span?.toLowerCase().includes(cleanSpan.toLowerCase()) ||
+            cleanSpan.toLowerCase().includes(c.quoted_span?.toLowerCase())
         ) || {
-          document_title: docTitle,
-          section_title: secTitle,
-          quoted_span: span,
+          document_title: docTitle.trim(),
+          section_title: secTitle.trim(),
+          quoted_span: cleanSpan,
           is_verified: true,
         };
+      const token = `CIT_TOKEN_${counter}`;
+      citationMap.set(token, { index: counter, citation: existing });
+      counter++;
+      return ` ${token} `;
+    });
 
-      const cIndex = citationCounter++;
-      parts.push(
-        <InlineCitation
-          key={`cit-${matchStart}`}
-          index={cIndex}
-          citation={existingCitation}
-          onSelect={onSelectCitation}
-        />
-      );
-
-      lastIndex = matchEnd;
-    }
-
-    if (lastIndex < content.length) {
-      parts.push(content.slice(lastIndex));
-    }
+    const renderTextWithTokens = (text) => {
+      if (typeof text !== "string") return text;
+      const parts = text.split(/(CIT_TOKEN_\d+)/g);
+      return parts.map((part, idx) => {
+        const item = citationMap.get(part);
+        if (item) {
+          return (
+            <InlineCitation
+              key={idx}
+              index={item.index}
+              citation={item.citation}
+              onSelect={onSelectCitation}
+            />
+          );
+        }
+        return part;
+      });
+    };
 
     return (
       <div className="prose prose-sm dark:prose-invert max-w-none text-foreground leading-relaxed text-sm">
-        {parts.map((p, i) =>
-          typeof p === "string" ? (
-            <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>
-              {p}
-            </ReactMarkdown>
-          ) : (
-            p
-          )
-        )}
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            p: ({ children }) => (
+              <p className="mb-3 last:mb-0">
+                {React.Children.map(children, (child) =>
+                  typeof child === "string" ? renderTextWithTokens(child) : child
+                )}
+              </p>
+            ),
+            li: ({ children }) => (
+              <li>
+                {React.Children.map(children, (child) =>
+                  typeof child === "string" ? renderTextWithTokens(child) : child
+                )}
+              </li>
+            ),
+            blockquote: ({ children }) => (
+              <blockquote className="border-l-2 border-accent pl-3 my-2 text-muted-foreground italic">
+                {React.Children.map(children, (child) =>
+                  typeof child === "string" ? renderTextWithTokens(child) : child
+                )}
+              </blockquote>
+            ),
+          }}
+        >
+          {processed}
+        </ReactMarkdown>
       </div>
     );
   };

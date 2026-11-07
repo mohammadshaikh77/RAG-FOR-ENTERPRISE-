@@ -6,7 +6,7 @@ from typing import Any
 import structlog
 
 from agent.tools.base import BaseTool, ToolResult
-from packages.rag.src.rag.search import HybridRetriever
+from packages.rag.src.rag.search import HybridRetriever, RetrievalMode
 
 logger = structlog.get_logger(__name__)
 
@@ -68,6 +68,8 @@ class SearchDocumentsTool(BaseTool):
                     org_id=org_id,
                     query=query,
                     top_k=top_k,
+                    candidate_k=20,
+                    mode=RetrievalMode.HYBRID_RERANK,
                     section=section_filter,
                 )
 

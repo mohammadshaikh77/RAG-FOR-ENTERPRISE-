@@ -20,7 +20,7 @@ class Citation(BaseModel):
 # [Document: Lisinopril FDA Label | Section: Boxed Warning | "When used in pregnancy..."]
 # or [Lisinopril | Boxed Warning | "When used in pregnancy..."]
 CITATION_REGEX = re.compile(
-    r"\[(?:Document:\s*)?([^|]+?)\s*\|\s*(?:Section:\s*)?([^|]+?)\s*\|\s*[\"“](.+?)[\"”]\s*\]",
+    r"\[(?:Document:\s*)?([^|]+?)\s*\|\s*(?:Section:\s*)?([^|]+?)\s*\|\s*[\"“]([\s\S]+?)[\"”]\s*\]",
     re.IGNORECASE,
 )
 

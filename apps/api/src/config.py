@@ -44,19 +44,19 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="openai/gpt-oss-120b", alias="GROQ_MODEL")
 
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-3.5-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
 
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
     ollama_model: str = Field(default="llama3.1:8b", alias="OLLAMA_MODEL")
 
-    llm_provider_order_raw: str = Field(default="groq,gemini,mock", alias="LLM_PROVIDER_ORDER")
+    llm_provider_order_raw: str = Field(default="groq,gemini", alias="LLM_PROVIDER_ORDER")
 
     # Embedding & Reranker
     embedding_model: str = Field(
         default="sentence-transformers/all-MiniLM-L6-v2", alias="EMBEDDING_MODEL"
     )
     embedding_dimension: int = Field(default=384, alias="EMBEDDING_DIMENSION")
-    enable_reranker: bool = Field(default=False, alias="ENABLE_RERANKER")
+    enable_reranker: bool = Field(default=True, alias="ENABLE_RERANKER")
     reranker_model: str = Field(
         default="cross-encoder/ms-marco-TinyBERT-L-2-v2", alias="RERANKER_MODEL"
     )

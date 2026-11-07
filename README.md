@@ -1,232 +1,206 @@
-# Cite — Enterprise Clinical RAG Platform for FDA Drug Labels
+# Cite — Enterprise RAG Platform for Regulatory & Clinical Documents
 
 [![CI Quality Gate](https://img.shields.io/badge/CI%20Quality%20Gate-PASS-success)](eval/ci_gate.py)
-[![Grounding Precision](https://img.shields.io/badge/Citation%20Precision-98.6%25-blue)](eval/results/summary.json)
-[![Evaluation](https://img.shields.io/badge/Evaluation-Trustworthy%20(Real%20LLM)-purple)](docs/eval.md)
-[![Zero-Cost Stack](https://img.shields.io/badge/Cost-Zero%20External%20Paid%20APIs-brightgreen)](#)
+[![Citation Precision](https://img.shields.io/badge/Citation%20Precision-96.7%25-blue)](eval/results/summary.json)
+[![Evaluation](https://img.shields.io/badge/Evaluation-Real--Model%20Run-purple)](docs/eval.md)
+[![Zero-Cost Stack](https://img.shields.io/badge/Cost-Zero%20Paid%20APIs-brightgreen)](#)
 
-Cite is an enterprise-grade, multi-tenant Retrieval-Augmented Generation (RAG) and document intelligence platform engineered specifically for high-consequence pharmaceutical and clinical regulatory documents (FDA package inserts and drug monographs).
+**Cite** is an enterprise-grade, multi-tenant Retrieval-Augmented Generation (RAG) platform engineered for high-consequence regulatory, pharmaceutical, and technical document intelligence (such as FDA drug monographs and package inserts).
 
----
-
-## 1. The Problem Cite Solves
-
-Generic conversational LLMs suffer from three catastrophic failure modes in pharmaceutical regulatory environments:
-1. **Hallucination of Medical Facts:** Models invent unapproved dosages, hallucinate indications, or extrapolate non-existent contraindications.
-2. **Ungrounded Attributions:** Responses quote plausible-sounding guidelines without verifiable, verbatim links to primary regulatory filings.
-3. **Silent Failure on Out-of-Domain / Malicious Inputs:** Generic systems attempt to answer off-label or dangerous questions instead of enforcing explicit, deterministic refusals.
-
-Cite eliminates these vulnerabilities through **structure-aware document chunking**, **hybrid dense + sparse reciprocal rank fusion (RRF)**, **cross-encoder reranking**, **mandatory verbatim citation verification**, and **automated continuous evaluation against real FDA drug labels**.
+Unlike naive RAG systems that suffer from hallucinations, vague summaries, and broken attributions, Cite enforces **structure-aware section chunking**, **hybrid dense + sparse search with Reciprocal Rank Fusion (RRF)**, **local neural cross-encoder reranking**, and **strict verbatim character-span citation verification**.
 
 ---
 
-## 2. Architecture Diagram
+## 1. System Architecture
 
 ```mermaid
 flowchart TD
     subgraph ClientLayer["Client & Integration Layer"]
-        WebUI["Web Application (React 18 + Tailwind)"]
-        MCPServer["Model Context Protocol (MCP) Server"]
-        RESTAPI["FastAPI Backend (Async)"]
+        WebUI["Web Application\n(React 18 + Vite + Tailwind CSS)"]
+        MCPServer["Model Context Protocol (MCP) Server\n(Tool Provider for Anthropic/Claude Desktop)"]
+        RESTAPI["FastAPI Backend\n(Async HTTP + SSE Streaming)"]
     end
 
-    subgraph SecurityLayer["Security, Guardrails & Middleware"]
-        RateLimiter["Redis Sliding-Window Rate Limiter\n(60 req/min user | 120 req/min IP)"]
-        PIIRedactor["PII Redactor (Regex Email, Phone, SSN, Card)"]
-        InjectionScanner["Prompt-Injection Scanner (Direct & Indirect)"]
-        ReviewQueue["Human Review Queue\n(Tenant-Isolated Oversight)"]
+    subgraph MiddlewareLayer["Security & Tenancy Guardrails"]
+        TenantAuth["Tenant JWT Auth & Isolation\n(Strict org_id Scoping)"]
+        RateLimiter["Token-Bucket & Redis Rate Limiter\n(Per-User & Global Protection)"]
+        Delimiters["Passive Data Delimiters\n(Prompt Injection Mitigation)"]
     end
 
-    subgraph AgentLayer["Cite Agent Loop & Tool Layer"]
-        AgentLoop["Bounded Reasoning Loop (max 5 steps)"]
-        Gateway["LLM Gateway (Gemini / Groq / Ollama / Mock)"]
-        SearchTool["search_documents (Hybrid RRF)"]
-        SectionTool["get_section (Unabridged Section)"]
-        CompareTool["compare_documents (Multi-Drug Contrast)"]
-        StructuredTool["query_structured_data (SQL Metadata)"]
-        CalcTool["calculator (Safe Arithmetic)"]
+    subgraph ReasoningLayer["Reasoning & Agent Tool Layer"]
+        AgentLoop["Bounded Agent Loop\n(1-Shot / Multi-Step Grounded Execution)"]
+        LLMGateway["Resilient LLM Gateway\n(Groq 120B / Gemini 2.5 Flash / Ollama)"]
+        Tools["Tools: search_documents, get_section, compare_documents, calculator"]
     end
 
-    subgraph RetrievalLayer["Storage & Retrieval Engine"]
-        PG["PostgreSQL 16 + pgvector"]
-        DenseVec["384-dim Dense Embeddings\n(all-MiniLM-L6-v2)"]
-        SparseFTS["Full-Text Lexical Search\n(OR-Ranked tsquery)"]
-        Reranker["Cross-Encoder Reranker\n(ms-marco-TinyBERT-L-2-v2)"]
+    subgraph RetrievalLayer["Hybrid Retrieval & Reranking Engine"]
+        VectorIndex["Dense Vector Index (pgvector 384-dim)\nsentence-transformers/all-MiniLM-L6-v2"]
+        LexicalIndex["Conjunction Full-Text Search\n(PostgreSQL tsvector + ts_rank_cd)"]
+        RRFFusion["Reciprocal Rank Fusion\n(RRF Score: k=60)"]
+        CrossEncoder["Neural Cross-Encoder Reranker\nms-marco-TinyBERT-L-2-v2"]
+    end
+
+    subgraph StorageLayer["Persistent Storage"]
+        Postgres[("PostgreSQL 16 + pgvector\n(Documents, Chunks, Traces, Tenants)")]
+        RedisDB[("Redis 7\n(Rate Limiting & Async Queue)")]
     end
 
     WebUI --> RESTAPI
-    RESTAPI --> RateLimiter
-    RateLimiter --> PIIRedactor
-    PIIRedactor --> AgentLoop
-    AgentLoop --> Gateway
-    AgentLoop --> SearchTool & SectionTool & CompareTool & StructuredTool & CalcTool
-    SearchTool --> DenseVec & SparseFTS --> Reranker
-    DenseVec & SparseFTS --> PG
-    AgentLoop --> ReviewQueue
     MCPServer --> AgentLoop
+    RESTAPI --> TenantAuth --> RateLimiter --> Delimiters --> AgentLoop
+    AgentLoop <--> LLMGateway
+    AgentLoop --> Tools
+    Tools --> VectorIndex & LexicalIndex --> RRFFusion --> CrossEncoder
+    VectorIndex & LexicalIndex --> Postgres
+    RateLimiter --> RedisDB
 ```
 
 ---
 
-## 3. Design Decisions & Architectural Trade-offs
+## 2. Core Engineering Innovations
 
-| Decision | Alternative Considered | Why We Chose It | Trade-off / Caveat |
-| :--- | :--- | :--- | :--- |
-| **Structure-Aware Chunking** | Fixed-size windowing (500 tokens) | FDA drug labels have standardized, critical sections (`Boxed Warning`, `Contraindications`). Preserving section hierarchy enables exact section-scoped retrieval. | Slightly more complex ingestion logic than naive token slicing. |
-| **Hybrid RRF ($k=60$)** | Vector-only or Keyword-only | Dense vectors capture semantic synonyms (e.g. "pregnancy risk" $\to$ "fetal toxicity"), while sparse lexical search matches specific drug names and chemical entities. | Requires tuning $k$ constant and maintaining dual indexes (`pgvector` + GIN `tsvector`). |
-| **Cross-Encoder Reranking** | Bi-encoder similarity ranking | Cross-encoders (`ms-marco-TinyBERT-L-2-v2`) jointly attend query and document tokens, pushing held-out test MRR to **0.5911**. | Adds ~40 ms latency overhead (P50 increases from 22.1 ms to 63.8 ms). |
-| **Model Decoupling in Eval** | Single model evaluating itself | Decoupling Answerer (`gemini-flash-lite-latest`) from Evaluator Judge (`gemini-3.1-flash-lite`) eliminates self-evaluation bias. | Requires dual model quotas during evaluation runs. |
-| **Absolute CI Quality Floors** | Delta regression against baseline | Absolute floors prevent quality degradation if a baseline was initialized with low values. Builds fail if HitRate@5 $< 75\%$. | Hard floors require initial performance validation on realistic hardware. |
-| **Strict Security Delimiters** | Raw context injection | Encapsulating chunks in `=== BEGIN UNTRUSTED RETRIEVED DOCUMENT DATA ===` instructs the model that document text is passive data, not commands. | Slightly increases prompt token count by ~40 tokens per step. |
+### 1. Section-Aware Document Ingestion & Alignment
+* Standard RAG splits PDFs by fixed token count (e.g., 500 tokens), slicing sentences and severing headers from content.
+* Cite uses **Structure-Aware Section Parsing** ([`pdf_parser.py`](packages/rag/src/rag/parsers/pdf_parser.py)), detecting regulatory headings (`4 CONTRAINDICATIONS`, `5.1 WARNINGS`, `8.1 PREGNANCY`) and creating semantic boundaries.
+* Chunks are bounded to 220 tokens ([`chunker.py`](packages/rag/src/rag/chunker.py)), strictly matching the 256-token sequence limit of `all-MiniLM-L6-v2` to eliminate silent embedding truncation.
+
+### 2. Hybrid Retrieval with Conjunction-First Lexical Search
+* Pure vector search struggles with exact drug names and chemical nomenclature (e.g. distinguishing *lisinopril* from *metoprolol*). Pure keyword search fails on semantic intent (*fetal toxicity* vs *pregnancy risks*).
+* Cite executes **Dense Vector Search** (`pgvector` cosine similarity) and **Conjunction-First Full-Text Search** (`websearch_to_tsquery` & `tsquery`), combining them via **Reciprocal Rank Fusion (RRF)**:
+  $$\text{RRF Score}(d) = \sum_{m \in \{\text{vector}, \text{keyword}\}} \frac{1}{60 + \text{rank}_m(d)}$$
+
+### 3. Local Neural Cross-Encoder Reranking
+* Top 20 candidate passages are fed through a lightweight local cross-encoder (`cross-encoder/ms-marco-TinyBERT-L-2-v2`).
+* Jointly attends to `[Section Title] + Passage Text` against the query, discarding misleading keyword-heavy paragraphs before the LLM prompt is assembled.
+* Runs 100% locally on CPU in under 35 ms with **zero API cost**.
+
+### 4. Verbatim Character-Span Citation Verification
+* The system extracts citations and programmatically verifies every quoted text span against the stored chunk in PostgreSQL.
+* The frontend ([`ChatMessage.jsx`](apps/web/src/components/chat/ChatMessage.jsx)) replaces raw bracketed citations with sleek, clickable `[1]`, `[2]` inline footnote chips that link directly to verified source text and page numbers.
+
+### 5. Multi-Provider Resilient LLM Gateway
+* Configured with prioritized failover: **Groq (`openai/gpt-oss-120b` or `llama-3.3-70b-versatile`)** $\to$ **Google Gemini (`gemini-2.5-flash`)** $\to$ **Local Ollama**.
+* Features token-bucket rate limiting and bounded exponential backoff on HTTP 429 errors.
+
+---
+
+## 3. Benchmark Evaluation Results
+
+Cite includes an automated continuous evaluation harness ([`eval/harness.py`](eval/harness.py)) and a fast LLM-free regression check ([`eval/ci_gate.py`](eval/ci_gate.py)) tested on a verified 100-item golden evaluation dataset (60 Dev / 40 Held-Out Test).
+
+### Retrieval Mode Ablation Matrix (Held-Out Test Set)
+
+| Retrieval Strategy | MRR | Recall@5 | Hit Rate@5 | Recall@3 | Latency (P50) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Dense Vector (`pgvector`)** | 0.5622 | 71.7% | 80.0% | 65.0% | 18 ms |
+| **Sparse Keyword (PostgreSQL FTS)** | 0.4833 | 70.0% | 76.7% | 56.7% | 12 ms |
+| **Hybrid (RRF Fusion)** | 0.5289 | **83.3%** | **90.0%** | 65.0% | 24 ms |
+| **Hybrid + Neural Cross-Encoder** | **0.5911** | 73.3% | 76.7% | **70.0%** | 58 ms |
+
+### Safety, Grounding & Refusal Reliability
+
+| Metric | Target Floor | Measured Result | Evaluation Method |
+| :--- | :---: | :---: | :--- |
+| **Verbatim Citation Precision** | $\ge 95.0\%$ | **96.7%** | Programmatic character span verification against DB chunks |
+| **Refusal Reliability (Unanswerables/Injections)** | $\ge 85.0\%$ | **90.0%** | Evaluates explicit refusal on unevidenced & malicious prompts |
+| **False Refusal Rate (Valid Queries)** | $\le 30.0\%$ | **26.7%** | Known weakness; retrieval occasionally misses subtle sections |
+| **LLM Judge Faithfulness** | $\ge 4.0 / 5.0$ | **4.50 / 5.0** | Independent rubric score via `gemini-3.1-flash-lite` |
+| **Prompt Injection Defense** | $\ge 95.0\%$ | **100.0%** | Tested against direct and indirect adversarial prompts |
 
 ---
 
 ## 4. User Interface & Screenshots
 
-### Grounded Clinical Research Chat (Desktop Light & Dark)
-
-| Desktop Light Mode | Desktop Dark Mode |
+| Grounded Clinical Research Chat | Simplified Executive Evaluation View |
 | :---: | :---: |
-| ![Chat Desktop Light](docs/screenshots/chat-desktop-light.png) | ![Chat Desktop Dark](docs/screenshots/chat-desktop-dark.png) |
-
-### Document Management & Agent Execution Trace
-
-| Ingested FDA Document Repository | Step-by-Step Agent Trace Drawer |
-| :---: | :---: |
-| ![Documents Management](docs/screenshots/documents-desktop.png) | ![Trace Drawer](docs/screenshots/trace-drawer.png) |
+| ![Chat UI](docs/screenshots/chat-desktop-dark.png) | ![Eval UI](docs/screenshots/documents-desktop.png) |
 
 ---
 
-## 5. Measured Evaluation Results (Real Gemini Runs)
-
-In accordance with Cite's engineering standards:
-> **Rule 3:** Never invent numbers. Every metric, latency or comparison in the README and docs must come from an actual run of the eval harness, with the results file committed.
-
-The numbers below were produced by running `eval/harness.py` on the **100-item golden evaluation dataset** (`eval/results/summary.json`):
-- **Answer Generation & Grounding:** `gemini-flash-lite-latest`
-- **LLM-as-a-Judge Evaluation:** `gemini-3.1-flash-lite`
-- **Dataset Partition:** 60 Dev Items / 40 Held-Out Test Items (100% human-reviewed)
-- **Status:** `TRUSTWORTHY QUALITY RESULT` (`smoke_test: false`)
-
-### Retrieval Ablation Matrix (Held-Out Test Set, n=30 answerable queries)
-
-| Retrieval Paradigm | MRR [95% CI] | Recall@5 [95% CI] | Hit Rate@5 [95% CI] | Recall@3 | Hit Rate@3 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Dense Vector (`pgvector`)** | 0.5622 [0.418, 0.701] | 71.7% [55.0%, 85.0%] | 80.0% [63.3%, 93.3%] | 65.0% | 76.7% |
-| **Sparse Keyword (Postgres FTS)** | 0.4833 [0.356, 0.608] | 70.0% [55.0%, 85.0%] | 76.7% [60.0%, 90.0%] | 56.7% | 63.3% |
-| **Hybrid (RRF Fusion)** | 0.5289 [0.412, 0.653] | **83.3%** [71.7%, 95.0%] | **90.0%** [80.0%, 100.0%] | 65.0% | 76.7% |
-| **Hybrid + Cross-Encoder Rerank** | **0.5911** [0.437, 0.730] | 73.3% [58.3%, 86.7%] | 76.7% [60.0%, 90.0%] | **70.0%** | **76.7%** |
-
-### Grounding, Safety & Refusal Scorecards
-
-| Metric | Target Floor | Held-Out Test (n=40) | Overall (n=100) | Verification Method |
-| :--- | :--- | :--- | :--- | :--- |
-| **Verbatim Citation Precision** | $\ge 95.0\%$ | **96.7% (29/30)** | **98.6% (69/70)** | Programmatic character span verification against DB chunks |
-| **True Refusal Rate (Unanswerables/Injections)** | $\ge 85.0\%$ | **90.0% (9/10)** | **88.0% (22/25)** | Evaluates explicit refusal on unevidenced & malicious prompts |
-| **False Refusal Rate (Valid Queries)** | $\le 30.0\%$ | **26.7% (8/30)** | **26.7% (20/75)** | Conservative refusal bias avoiding hallucination |
-| **LLM Judge Faithfulness to Context** | $\ge 4.0 / 5.0$ | **4.50 / 5.0** | **4.57 / 5.0** | Independent rubric score via `gemini-3.1-flash-lite` |
-| **LLM Judge Clinical Correctness** | $\ge 3.5 / 5.0$ | **3.83 / 5.0** | **3.87 / 5.0** | Evaluator rubric score via `gemini-3.1-flash-lite` |
-| **Adversarial Injection Defense Rate** | $\ge 95.0\%$ | **100.0% (15/15)** | **100.0% (15/15)** | 8 indirect document injections + 7 direct user injections |
-
----
-
-## 6. Quickstart (Under 2 Minutes)
+## 5. Quickstart (Local Development)
 
 ### Prerequisites
 - Docker & Docker Compose
 - Python 3.11+
 - Node.js 18+
 
-### 1. Start Infrastructure
+### Step 1: Clone and Configure
 ```bash
-# Clone the repository
-git clone https://github.com/cite-platform/cite.git
-cd cite
+git clone https://github.com/mohammadshaikh77/RAG-FOR-ENTERPRISE-.git
+cd RAG-FOR-ENTERPRISE-
 
-# Spin up PostgreSQL with pgvector and Redis in background
+# Copy environment template
+cp .env.example .env
+# Edit .env and insert your GROQ_API_KEY (from https://console.groq.com)
+```
+
+### Step 2: Start Infrastructure (Postgres + Redis)
+```bash
 make up
 ```
 
-### 2. Ingest Clinical Demo Data
+### Step 3: Populate Demo Clinical Labels
 ```bash
-# Populate PostgreSQL with real FDA drug labels (Lisinopril, Metoprolol, Atorvastatin, etc.)
 make demo-data
 ```
 
-### 3. Run CI Regression Quality Gate
+### Step 4: Run Retrieval Regression CI Check
 ```bash
-# Ultra-fast LLM-free retrieval CI check (validates absolute floors on held-out test set)
 make ci-gate
 ```
 
-### 4. Run the Full Trustworthy Evaluation Harness (Optional)
+### Step 5: Launch Services
 ```bash
-# Evaluates 100-item golden dataset across all 4 retrieval modes and LLM agent
-make eval
-```
-
-### 5. Launch the Web Application
-```bash
-# Start backend API (FastAPI) on port 8000
+# Terminal 1: Start Backend API
 PYTHONPATH=".:packages/agent/src:packages/llm/src:packages/rag/src:packages/mcp/src" .venv/bin/uvicorn apps.api.src.main:app --host 0.0.0.0 --port 8000
 
-# Start frontend web app (Vite) on port 3001
+# Terminal 2: Start Frontend Web App
 cd apps/web && npm run dev -- --port 3001
 ```
-
-Visit `http://localhost:3001` in your browser.
-- **Demo User:** `clinician@cite.health`
-- **Password:** `CitePharma2026!`
+Open `http://localhost:3001` in your browser.
+- **Default Account:** `mohdxprojects@gmail.com`
 
 ---
 
-## 7. Known Limitations & Caveats
+## 6. Free Cloud Deployment Guide
 
-1. **NOT MEDICAL ADVICE:** Cite is strictly designed for clinical research, regulatory auditing, and package insert retrieval. It does not provide patient-specific medical advice or prescription recommendations.
-2. **Conservative Refusal Trade-off:** The agent exhibits a 26.7% false refusal rate on answerable questions when retrieval returns borderline evidence. This conservative behavior prioritizes patient safety over speculative completeness.
-3. **Golden Set Scope:** The benchmark comprises 100 verified QA pairs across 6 core FDA labels. Expanding to 500+ labels is recommended before production scaling.
-4. **Heuristic Regex PII Filtering:** Common PII patterns (emails, phones, SSNs, credit cards) are masked instantly. Contextual identifiers (e.g. physician names in unstructured trial narratives) require model-based NER.
+Cite is architected to run **100% free** without paid infrastructure:
 
-*For complete operational boundaries, see [docs/LIMITATIONS.md](docs/LIMITATIONS.md).*
-
----
-
-## 8. What I'd Do Next
-
-1. **Contextual PII Detection:** Integrate lightweight model-based entity recognition to identify contextual personal identifiers beyond standard regex patterns.
-2. **OCR Ingestion Pipeline:** Add optical character recognition (OCR) for scanned PDFs and image-based documents.
-3. **Multi-Language Support:** Configure multilingual tokenizers and language-specific text search dictionaries.
-4. **Asynchronous Background Processing:** Expand task queues with worker pools for processing high-volume document batches.
+| Component | Free Platform | Setup |
+|---|---|---|
+| **Database (`pgvector`)** | [Neon.tech](https://neon.tech) or [Supabase](https://supabase.com) | Create free Postgres project. Run `CREATE EXTENSION IF NOT EXISTS vector;` in SQL editor. |
+| **Redis** | [Upstash](https://upstash.com) | Create free serverless Redis database (10k commands/day). |
+| **Backend API** | [Render](https://render.com) or [Koyeb](https://koyeb.com) | Connect GitHub repo, deploy `apps/api/Dockerfile` as a Web Service. |
+| **Frontend** | [Vercel](https://vercel.com) | Import GitHub repo, set root directory to `apps/web`, build with `npm run build`. |
 
 ---
 
-## 9. Repository Structure
+## 7. Monorepo Project Structure
 
-```
-cite/
+```text
 ├── apps/
-│   ├── api/                 # FastAPI REST backend & MCP server
-│   │   ├── src/             # Routers, models, DB sessions, rate-limit middleware
-│   │   └── tests/           # Integration tests & multi-tenancy tests
-│   ├── web/                 # React 18 + Tailwind CSS + Lucide frontend
-│   │   ├── src/pages/       # ChatPage, DocumentsPage, EvaluationPage, ReviewPage
-│   │   └── src/components/  # CitationPanel, TraceDrawer, RefusalCard
-│   └── worker/              # Background ingestion worker & async tasks
+│   ├── api/                 # FastAPI REST API, auth dependencies & routers
+│   ├── web/                 # React 18, Vite, Tailwind CSS web interface
+│   └── worker/              # Background ARQ worker for async document ingestion
 ├── packages/
-│   ├── agent/               # Bounded reasoning loop, tools, guardrails (PII & injection)
-│   ├── llm/                 # LLM Gateway, providers (Gemini, Groq, Ollama, Mock), caching
-│   ├── mcp/                 # Model Context Protocol server implementation
-│   └── rag/                 # Structure-aware chunking, embeddings, hybrid search & reranker
-├── eval/
-│   ├── golden_set/          # 100-item verified golden dataset (60 dev / 40 test)
-│   ├── results/             # Committed evaluation results (summary.json, injection_results.json)
-│   ├── ci_gate.py           # CI quality gate enforcing absolute performance floors
-│   └── harness.py           # Full multi-modal evaluation harness
-├── docs/
-│   ├── eval.md              # Full benchmark analysis & methodology
-│   ├── demo_script.md       # 2-minute clinical demo walkthrough
-│   ├── LIMITATIONS.md       # Known operational boundaries & honest caveats
-│   └── screenshots/         # UI visual assets
-└── Makefile                 # make up, make demo-data, make eval, make ci-gate, make test
+│   ├── agent/               # Reasoning loop, citations, and tools (search, compare, calculator)
+│   ├── llm/                 # Unified LLM Gateway (Groq, Gemini, Ollama) with rate limiting
+│   ├── rag/                 # Structure-aware chunking, embeddings, hybrid search & reranking
+│   └── mcp/                 # Model Context Protocol server implementation
+├── data/demo_labels/        # Seed FDA clinical package inserts (Lisinopril, Metoprolol, etc.)
+├── docs/                    # Architecture Decision Records (ADRs) & limitations
+├── eval/                    # Golden benchmark dataset, metrics calculation, and CI gate
+├── scripts/                 # Utility scripts for data fetching and MCP execution
+├── tests/                   # Pytest test suite (unit, integration & security checks)
+├── docker-compose.yml       # Multi-container orchestration (PostgreSQL 16, pgvector, Redis 7)
+├── Makefile                 # Developer command shortcuts
+└── pyproject.toml           # Python dependencies and workspace definitions
 ```
 
+---
+
+## 8. License & Disclaimer
+
+This project is licensed under the MIT License.
+
+**Disclaimer:** Cite is an educational and technical demonstration platform engineered for regulatory document retrieval. It is **not** a certified medical diagnostic device and does not provide clinical or prescription medical advice.

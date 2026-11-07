@@ -5,11 +5,11 @@ import { Sidebar } from "./Sidebar.jsx";
 import { ThemeToggle } from "./ThemeToggle.jsx";
 
 const TITLE_MAP = {
-  "/": "Clinical Research Chat",
-  "/documents": "Document Repository & Ingestion",
-  "/evaluation": "Evaluation Harness",
-  "/review": "Safety & Human Review Queue",
-  "/settings": "Workspace Settings",
+  "/": "Ask questions",
+  "/documents": "Your documents",
+  "/evaluation": "How well does Cite work?",
+  "/review": "Answers that need checking",
+  "/settings": "Settings",
 };
 
 export function AppLayout() {

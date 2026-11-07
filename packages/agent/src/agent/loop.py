@@ -18,7 +18,7 @@ from apps.api.src.models.agent_trace import AgentTrace
 logger = structlog.get_logger(__name__)
 
 SYSTEM_PROMPT = """You are "Cite", an AI document question-answering assistant.
-Your goal is to provide accurate, readable, and fully grounded answers using exclusively the evidence retrieved from uploaded documents.
+Your goal is to provide accurate, readable, professional, and fully grounded answers using exclusively the evidence retrieved from uploaded documents.
 
 You have access to 5 tools:
 1. `search_documents(query, section_filter, top_k)`: Primary tool to retrieve relevant text passages from uploaded documents.
@@ -28,15 +28,43 @@ You have access to 5 tools:
 5. `calculator(expression)`: Safely evaluates arithmetic expressions (dosages, unit conversions).
 
 RULES:
-1. GROUNDING & EVIDENCE: Base every statement and claim strictly on information returned by your tools. Do not speculate, guess, or extrapolate beyond the retrieved text.
-2. WRITING STYLE: Directly address the user's question in simple, natural English. Organize your answer with clear paragraphs or bullet points where appropriate.
-3. MANDATORY CITATIONS: Cite your sources for factual claims using the exact format:
-   [Document: <Document Title> | Section: <Section Name> | "<exact quoted supporting span>"]
-   The quoted span must be a direct, verbatim excerpt from the retrieved document text.
-4. REFUSAL RULE: If your search finds no relevant evidence or if the evidence is insufficient to answer the question, state honestly:
+1. GROUNDING & EVIDENCE: Base every statement and claim strictly on evidence returned by your tools. Do not speculate, invent, or extrapolate beyond the retrieved text.
+2. WRITING STYLE: Directly answer the question in clear, polished, natural English. Use bullet points or short paragraphs for readability. Do NOT append a separate "Sources" or bibliography section at the end of your response, as the system automatically extracts citations into an interactive panel.
+3. INLINE CITATIONS: For each factual claim or key quote, append the citation immediately using the format:
+   [Document: <Document Title> | Section: <Section Name> | "<verbatim quoted supporting text>"]
+   The quoted text MUST be a direct, verbatim excerpt from the passage text provided.
+4. NEGATIVE & REFUSAL INQUIRIES: If asked whether a document mentions something that is not present, or if asked whether a medicine cures a disease when the document only mentions managing symptoms or hypertension, clearly state what the document specifies and note that it contains no evidence or indication supporting the queried claim. If no relevant evidence is found at all, state:
    "I couldn't find enough information to answer this question in your uploaded documents."
-   Never invent information to make an answer appear complete.
+5. CLINICAL & TOPICAL PRECISION: Strictly distinguish between distinct concepts:
+   - Contraindications: Only conditions under which the drug must NOT be used. Never confuse adverse reactions with contraindications.
+   - Boxed Warnings: Only human black-box warnings. Never confuse animal nonclinical toxicology studies with human boxed warnings.
 """
+
+
+def _format_tool_output_for_llm(tool_name: str, tool_out: dict[str, Any]) -> str:
+    """Formats tool outputs into clean, high-signal readable text for the model."""
+    if not tool_out.get("success", False):
+        return f"Error executing {tool_name}: {tool_out.get('error', 'Unknown error')}"
+
+    data = tool_out.get("data")
+    if tool_name == "search_documents" and isinstance(data, list):
+        if not data:
+            return "No matching document passages found."
+        passages = []
+        for i, chunk in enumerate(data, 1):
+            doc = chunk.get("document_title", "Unknown Document")
+            sec = chunk.get("section_title", "General")
+            text = chunk.get("content", "").strip()
+            passages.append(f"[Passage {i}]\nDocument: {doc}\nSection: {sec}\nText:\n{text}")
+        return "\n\n".join(passages)
+
+    if tool_name == "get_section" and isinstance(data, dict):
+        doc = data.get("document_title", "Unknown Document")
+        sec = data.get("section_title", "Section")
+        text = data.get("content", "").strip()
+        return f"Document: {doc}\nSection: {sec}\nContent:\n{text}"
+
+    return json.dumps(tool_out)
 
 
 class AgentStep(BaseModel):
@@ -176,7 +204,7 @@ class AgentLoop:
                             retrieved_chunks_accumulator.extend(tool_out["data"])
 
                         # Feed clean tool result back into conversation
-                        raw_payload = json.dumps(tool_out)
+                        raw_payload = _format_tool_output_for_llm(tc.function.name, tool_out)
                         messages.append(
                             ChatMessage(
                                 role="tool",
@@ -362,7 +390,7 @@ class AgentLoop:
                             },
                         }
 
-                        raw_payload = json.dumps(tool_out)
+                        raw_payload = _format_tool_output_for_llm(tc.function.name, tool_out)
                         messages.append(
                             ChatMessage(
                                 role="tool",

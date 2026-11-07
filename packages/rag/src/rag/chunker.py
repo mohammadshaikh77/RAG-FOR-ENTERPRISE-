@@ -21,7 +21,7 @@ class ChunkItem:
 class StructureAwareChunker:
     """Chunks documents respecting section boundaries, headings, and page context."""
 
-    def __init__(self, max_tokens: int = 400, overlap_tokens: int = 50) -> None:
+    def __init__(self, max_tokens: int = 220, overlap_tokens: int = 30) -> None:
         self.max_tokens = max_tokens
         self.overlap_tokens = overlap_tokens
 

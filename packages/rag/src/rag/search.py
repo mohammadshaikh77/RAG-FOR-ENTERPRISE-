@@ -202,7 +202,7 @@ class HybridRetriever:
         cosine_distance = DocumentChunk.embedding.cosine_distance(query_vector)
         similarity = (1 - cosine_distance).label("vector_sim")
 
-        stmt = (
+        base_stmt = (
             select(DocumentChunk, Document.title, similarity)
             .join(Document, DocumentChunk.document_id == Document.id)
             .where(
@@ -212,14 +212,25 @@ class HybridRetriever:
         )
 
         if document_id:
-            stmt = stmt.where(DocumentChunk.document_id == document_id)
+            base_stmt = base_stmt.where(DocumentChunk.document_id == document_id)
+
+        # Try with section filter if provided
+        stmt = base_stmt
         if section:
             stmt = stmt.where(DocumentChunk.section_title.ilike(f"%{section}%"))
 
         stmt = stmt.order_by(cosine_distance).limit(k)
         result = await session.execute(stmt)
+        rows_raw = result.all()
+
+        # If strict section filter yielded no results, fall back to unrestricted search
+        if not rows_raw and section:
+            fallback_stmt = base_stmt.order_by(cosine_distance).limit(k)
+            fallback_res = await session.execute(fallback_stmt)
+            rows_raw = fallback_res.all()
+
         rows: list[tuple[DocumentChunk, str, float]] = []
-        for row in result.all():
+        for row in rows_raw:
             chunk, title, sim = row[0], row[1], float(row[2])
             if chunk.chunk_metadata and chunk.chunk_metadata.get("is_flagged_injection"):
                 sim = sim * 0.1
@@ -227,7 +238,7 @@ class HybridRetriever:
         return rows
 
     def _build_tsquery(self, query: str) -> Any:
-        """Constructs an intelligent full-text query combining websearch syntax and content token OR-matching."""
+        """Constructs a conjunction full-text query using English stemming."""
         clean_query = query.strip()
         tokens = re.findall(r"[a-zA-Z0-9]+", clean_query.lower())
         content_tokens = [t for t in tokens if t not in STOP_WORDS and len(t) > 2]
@@ -236,10 +247,9 @@ class HybridRetriever:
 
         web_ts = func.websearch_to_tsquery("english", clean_query)
         if content_tokens:
-            # Join content tokens with OR for broad clinical recall across natural questions
-            or_expr = " | ".join(content_tokens)
-            or_ts = func.to_tsquery("english", or_expr)
-            return web_ts.op("||")(or_ts)
+            and_expr = " & ".join(content_tokens)
+            and_ts = func.to_tsquery("english", and_expr)
+            return web_ts.op("||")(and_ts)
         return web_ts
 
     async def _search_keyword(
@@ -251,11 +261,11 @@ class HybridRetriever:
         document_id: uuid.UUID | None = None,
         section: str | None = None,
     ) -> list[tuple[DocumentChunk, str, float]]:
-        """Sparse keyword search using Postgres full-text search with English stemming and OR-ranking."""
+        """Sparse keyword search using Postgres full-text search with English stemming."""
         ts_query = self._build_tsquery(query)
         ts_rank = func.ts_rank_cd(DocumentChunk.tsv_content, ts_query).label("rank_score")
 
-        stmt = (
+        base_stmt = (
             select(DocumentChunk, Document.title, ts_rank)
             .join(Document, DocumentChunk.document_id == Document.id)
             .where(
@@ -265,14 +275,46 @@ class HybridRetriever:
         )
 
         if document_id:
-            stmt = stmt.where(DocumentChunk.document_id == document_id)
+            base_stmt = base_stmt.where(DocumentChunk.document_id == document_id)
+
+        stmt = base_stmt
         if section:
             stmt = stmt.where(DocumentChunk.section_title.ilike(f"%{section}%"))
 
         stmt = stmt.order_by(desc(ts_rank)).limit(k)
         result = await session.execute(stmt)
+        rows_raw = result.all()
+
+        # Fallback 1: If section filter yielded nothing, retry without section
+        if not rows_raw and section:
+            fallback_stmt = base_stmt.order_by(desc(ts_rank)).limit(k)
+            fallback_res = await session.execute(fallback_stmt)
+            rows_raw = fallback_res.all()
+
+        # Fallback 2: If strict conjunction yielded nothing, try disjunction (OR)
+        if not rows_raw:
+            clean_query = query.strip()
+            tokens = re.findall(r"[a-zA-Z0-9]+", clean_query.lower())
+            content_tokens = [t for t in tokens if t not in STOP_WORDS and len(t) > 2]
+            if content_tokens:
+                or_query = func.to_tsquery("english", " | ".join(content_tokens))
+                or_rank = func.ts_rank_cd(DocumentChunk.tsv_content, or_query).label("rank_score")
+                or_stmt = (
+                    select(DocumentChunk, Document.title, or_rank)
+                    .join(Document, DocumentChunk.document_id == Document.id)
+                    .where(
+                        DocumentChunk.org_id == org_id,
+                        DocumentChunk.tsv_content.bool_op("@@")(or_query),
+                    )
+                )
+                if document_id:
+                    or_stmt = or_stmt.where(DocumentChunk.document_id == document_id)
+                or_stmt = or_stmt.order_by(desc(or_rank)).limit(k)
+                or_res = await session.execute(or_stmt)
+                rows_raw = or_res.all()
+
         kw_rows: list[tuple[DocumentChunk, str, float]] = []
-        for row in result.all():
+        for row in rows_raw:
             chunk, title, score = row[0], row[1], float(row[2])
             if chunk.chunk_metadata and chunk.chunk_metadata.get("is_flagged_injection"):
                 score = score * 0.1
@@ -394,14 +436,23 @@ class HybridRetriever:
 
         # 4. Optional Cross-Encoder Reranking
         if mode == RetrievalMode.HYBRID_RERANK and top_candidates:
-            candidate_texts = [chunk_map[cid][0].content for cid in top_candidates]
+            candidate_texts = [
+                f"[{chunk_map[cid][0].section_title}] {chunk_map[cid][0].content}"
+                if chunk_map[cid][0].section_title
+                else chunk_map[cid][0].content
+                for cid in top_candidates
+            ]
             logger.info("Executing cross-encoder reranker", candidates=len(candidate_texts))
-            rerank_scores = self.reranker.rerank(query, candidate_texts)
-            paired = list(zip(top_candidates, rerank_scores, strict=False))
-            # Sort descending by cross-encoder score
-            paired.sort(key=lambda x: x[1], reverse=True)
-            final_cids = [p[0] for p in paired[:top_k]]
-            rerank_score_map = dict(paired)
+            try:
+                rerank_scores = self.reranker.rerank(query, candidate_texts)
+                paired = list(zip(top_candidates, rerank_scores, strict=False))
+                paired.sort(key=lambda x: x[1], reverse=True)
+                final_cids = [p[0] for p in paired[:top_k]]
+                rerank_score_map = dict(paired)
+            except Exception as e:
+                logger.warning("Reranking failed, falling back to RRF candidates", error=str(e))
+                final_cids = top_candidates[:top_k]
+                rerank_score_map = {}
         else:
             final_cids = top_candidates[:top_k]
             rerank_score_map = {}

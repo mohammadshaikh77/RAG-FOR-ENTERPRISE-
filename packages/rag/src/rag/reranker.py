@@ -30,11 +30,15 @@ class CrossEncoderReranker:
     def rerank(self, query: str, texts: list[str]) -> list[float]:
         if not texts:
             return []
-        self._load_model()
-        assert self._model is not None
-        pairs = [[query, text] for text in texts]
-        scores = self._model.predict(pairs)
-        return [float(s) for s in scores]
+        try:
+            self._load_model()
+            assert self._model is not None
+            pairs = [[query, text] for text in texts]
+            scores = self._model.predict(pairs)
+            return [float(s) for s in scores]
+        except Exception as e:
+            logger.warning("Cross-encoder prediction error, returning zero scores", error=str(e))
+            return [0.0] * len(texts)
 
 
 class MockReranker:
