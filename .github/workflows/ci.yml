@@ -9,6 +9,8 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ".:apps/api/src:packages/llm/src:packages/rag/src:packages/agent/src:packages/mcp/src"
 
     services:
       postgres:
@@ -54,7 +56,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://cite_user:cite_password@localhost:5434/cite_db
         run: |
-          python apps/api/src/db/init_db.py
+          python -m apps.api.src.db.init_db
 
       - name: Run Ruff Lint
         run: |

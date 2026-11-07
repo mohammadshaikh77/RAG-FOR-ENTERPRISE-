@@ -1,6 +1,5 @@
 import io
 import re
-from typing import Any
 
 from pypdf import PdfReader
 
@@ -59,7 +58,7 @@ class PDFParser:
             current_title = f"Page {page_idx}"
 
             for match in matches:
-                start, end = match.start(), match.end()
+                start = match.start()
                 raw_heading = match.group(1).strip()
 
                 # Clean heading title (first line if multi-line)
