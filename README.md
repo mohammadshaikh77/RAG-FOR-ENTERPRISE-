@@ -1,13 +1,13 @@
-# Cite — Enterprise RAG Platform for Regulatory & Clinical Documents
+# Cite — Enterprise Multimodal RAG Platform for Regulatory & Clinical Documents
 
 [![CI Quality Gate](https://img.shields.io/badge/CI%20Quality%20Gate-PASS-success)](eval/ci_gate.py)
 [![Citation Precision](https://img.shields.io/badge/Citation%20Precision-96.7%25-blue)](eval/results/summary.json)
-[![Evaluation](https://img.shields.io/badge/Evaluation-Real--Model%20Run-purple)](docs/eval.md)
+[![Multimodal RAG](https://img.shields.io/badge/Multimodal%20RAG-PyMuPDF%20%2B%20Gemini%20Vision-blueviolet)](#6-zero-bloat-multimodal-diagram--figure-intelligence)
 [![Zero-Cost Stack](https://img.shields.io/badge/Cost-Zero%20Paid%20APIs-brightgreen)](#)
 
-**Cite** is an enterprise-grade, multi-tenant Retrieval-Augmented Generation (RAG) platform engineered for high-consequence regulatory, pharmaceutical, and technical document intelligence (such as FDA drug monographs and package inserts).
+**Cite** is an enterprise-grade, multi-tenant Retrieval-Augmented Generation (RAG) platform engineered for high-consequence regulatory, pharmaceutical, and technical document intelligence (such as FDA drug monographs, clinical trial reports, and package inserts).
 
-Unlike naive RAG systems that suffer from hallucinations, vague summaries, and broken attributions, Cite enforces **structure-aware section chunking**, **hybrid dense + sparse search with Reciprocal Rank Fusion (RRF)**, **local neural cross-encoder reranking**, and **strict verbatim character-span citation verification**.
+Unlike naive RAG systems that suffer from hallucinations, vague summaries, and broken attributions, Cite enforces **structure-aware section chunking**, **multimodal diagram & pharmacokinetic figure intelligence**, **hybrid dense + sparse search with Reciprocal Rank Fusion (RRF)**, **local neural cross-encoder reranking**, and **strict verbatim character-span citation verification**.
 
 ---
 
@@ -27,9 +27,16 @@ flowchart TD
         Delimiters["Passive Data Delimiters\n(Prompt Injection Mitigation)"]
     end
 
+    subgraph IngestionLayer["Multimodal & Section Ingestion Pipeline"]
+        PDFParser["Structure-Aware PDF Parser\n(PyMuPDF Primary + pypdf Fallback)"]
+        ImageExtractor["Figure Extractor & Deduplicator\n(PyMuPDF Raster Extraction & Hash Caching)"]
+        VisionCaptioner["Gemini Vision Captioner\n(gemini-3.5-flash with Token Bucket Limiter)"]
+        Chunker["Structure-Aware Chunker\n(Bounded 220 Tokens per Chunk)"]
+    end
+
     subgraph ReasoningLayer["Reasoning & Agent Tool Layer"]
-        AgentLoop["Bounded Agent Loop\n(1-Shot / Multi-Step Grounded Execution)"]
-        LLMGateway["Resilient LLM Gateway\n(Groq 120B / Gemini 2.5 Flash / Ollama)"]
+        AgentLoop["Prompt-Guided Agent Loop\n(Grounded Synthesis with Zero Looping)"]
+        LLMGateway["Resilient LLM Gateway\n(Groq gpt-oss-20b / Gemini 3.5 Flash / Ollama)"]
         Tools["Tools: search_documents, get_section, compare_documents, calculator"]
     end
 
@@ -48,6 +55,9 @@ flowchart TD
     WebUI --> RESTAPI
     MCPServer --> AgentLoop
     RESTAPI --> TenantAuth --> RateLimiter --> Delimiters --> AgentLoop
+    RESTAPI --> IngestionLayer
+    IngestionLayer --> Chunker & VisionCaptioner
+    Chunker & VisionCaptioner --> VectorIndex & LexicalIndex
     AgentLoop <--> LLMGateway
     AgentLoop --> Tools
     Tools --> VectorIndex & LexicalIndex --> RRFFusion --> CrossEncoder
@@ -61,26 +71,39 @@ flowchart TD
 
 ### 1. Section-Aware Document Ingestion & Alignment
 * Standard RAG splits PDFs by fixed token count (e.g., 500 tokens), slicing sentences and severing headers from content.
-* Cite uses **Structure-Aware Section Parsing** ([`pdf_parser.py`](packages/rag/src/rag/parsers/pdf_parser.py)), detecting regulatory headings (`4 CONTRAINDICATIONS`, `5.1 WARNINGS`, `8.1 PREGNANCY`) and creating semantic boundaries.
+* Cite uses **Structure-Aware Section Parsing** ([`pdf_parser.py`](packages/rag/src/rag/parsers/pdf_parser.py)), detecting regulatory headings (`4 CONTRAINDICATIONS`, `5.1 WARNINGS`, `8.1 PREGNANCY`, `12 CLINICAL PHARMACOLOGY`) and preserving semantic boundaries.
 * Chunks are bounded to 220 tokens ([`chunker.py`](packages/rag/src/rag/chunker.py)), strictly matching the 256-token sequence limit of `all-MiniLM-L6-v2` to eliminate silent embedding truncation.
 
-### 2. Hybrid Retrieval with Conjunction-First Lexical Search
-* Pure vector search struggles with exact drug names and chemical nomenclature (e.g. distinguishing *lisinopril* from *metoprolol*). Pure keyword search fails on semantic intent (*fetal toxicity* vs *pregnancy risks*).
+### 2. Zero-Bloat Multimodal Diagram & Figure Intelligence
+* Clinical and technical PDFs communicate vital data through figures: pharmacokinetic concentration-time curves, dose-response graphs, chemical structures, and Kaplan-Meier survival plots.
+* **Pure Python Extraction**: Uses `PyMuPDF` ([`image_extractor.py`](packages/rag/src/rag/parsers/image_extractor.py)) to extract embedded rasters directly—zero system binaries, zero `poppler` dependencies, keeping Docker builds simple and portable.
+* **Smart Noise Filtering**: Automatically filters out tiny icons (<150 px), thin divider lines, and repetitive company headers. Bounding-box coverage detection distinguishes true embedded figures from full-page scanned paper.
+* **Rate-Limited Vision Captioning**: Figures are analyzed via Gemini Vision ([`vision.py`](packages/llm/src/llm/vision.py)) using `gemini-3.5-flash` with in-memory SHA-256 deduplication caching and token-bucket throttling.
+* **Unified Indexing (No CLIP RAM Overhead)**: Visual descriptions are stored as first-class chunks linked to their source page and image hash. They flow seamlessly through the existing `pgvector` dense search, PostgreSQL full-text search, and TinyBERT reranker without spinning up expensive vision-embedding models.
+
+### 3. Accurate Scanned PDF Diagnostics (No Silent "Ready" Failures)
+* Unlike naive systems that silently mark scanned image PDFs as "Ready" with 0 indexed sections, Cite inspects total pages vs. extractable text layers.
+* If a 97-page scanned document contains 0 digital text characters, Cite marks the document status explicitly as **`FAILED`** and reports an actionable diagnostic error:
+  > *"Scanned PDF detected (97 pages). Document contains scanned images without an embedded digital text layer. Optical Character Recognition (OCR) is required."*
+* The UI displays an alert badge and details drawer, preventing users from asking questions against unindexed scanned files.
+
+### 4. Hybrid Retrieval with Conjunction-First Lexical Search
+* Pure vector search struggles with exact drug names and chemical nomenclature (e.g., distinguishing *lisinopril* from *metoprolol*). Pure keyword search fails on semantic intent (*fetal toxicity* vs *pregnancy risks*).
 * Cite executes **Dense Vector Search** (`pgvector` cosine similarity) and **Conjunction-First Full-Text Search** (`websearch_to_tsquery` & `tsquery`), combining them via **Reciprocal Rank Fusion (RRF)**:
   $$\text{RRF Score}(d) = \sum_{m \in \{\text{vector}, \text{keyword}\}} \frac{1}{60 + \text{rank}_m(d)}$$
 
-### 3. Local Neural Cross-Encoder Reranking
+### 5. Local Neural Cross-Encoder Reranking
 * Top 20 candidate passages are fed through a lightweight local cross-encoder (`cross-encoder/ms-marco-TinyBERT-L-2-v2`).
 * Jointly attends to `[Section Title] + Passage Text` against the query, discarding misleading keyword-heavy paragraphs before the LLM prompt is assembled.
 * Runs 100% locally on CPU in under 35 ms with **zero API cost**.
 
-### 4. Verbatim Character-Span Citation Verification
+### 6. Verbatim Character-Span Citation Verification
 * The system extracts citations and programmatically verifies every quoted text span against the stored chunk in PostgreSQL.
-* The frontend ([`ChatMessage.jsx`](apps/web/src/components/chat/ChatMessage.jsx)) replaces raw bracketed citations with sleek, clickable `[1]`, `[2]` inline footnote chips that link directly to verified source text and page numbers.
+* The frontend ([`ChatMessage.jsx`](apps/web/src/components/chat/ChatMessage.jsx)) replaces raw bracketed citations with sleek, clickable `[1]`, `[2]` inline footnote chips that link directly to verified source text, section paths, and page numbers.
 
-### 5. Multi-Provider Resilient LLM Gateway
-* Configured with prioritized failover: **Groq (`openai/gpt-oss-120b` or `llama-3.3-70b-versatile`)** $\to$ **Google Gemini (`gemini-2.5-flash`)** $\to$ **Local Ollama**.
-* Features token-bucket rate limiting and bounded exponential backoff on HTTP 429 errors.
+### 7. Multi-Provider Resilient LLM Gateway
+* Configured with prioritized failover: **Groq (`openai/gpt-oss-20b`)** $\to$ **Google Gemini (`gemini-3.5-flash`)** $\to$ **Local Ollama**.
+* Features token-bucket rate limiting and prompt-guided single-pass synthesis to eliminate runaway ReAct search loops and stay strictly within free-tier TPM limits.
 
 ---
 
@@ -104,20 +127,12 @@ Cite includes an automated continuous evaluation harness ([`eval/harness.py`](ev
 | **Verbatim Citation Precision** | $\ge 95.0\%$ | **96.7%** | Programmatic character span verification against DB chunks |
 | **Refusal Reliability (Unanswerables/Injections)** | $\ge 85.0\%$ | **90.0%** | Evaluates explicit refusal on unevidenced & malicious prompts |
 | **False Refusal Rate (Valid Queries)** | $\le 30.0\%$ | **26.7%** | Known weakness; retrieval occasionally misses subtle sections |
-| **LLM Judge Faithfulness** | $\ge 4.0 / 5.0$ | **4.50 / 5.0** | Independent rubric score via `gemini-3.1-flash-lite` |
+| **LLM Judge Faithfulness** | $\ge 4.0 / 5.0$ | **4.50 / 5.0** | Independent rubric score via `gemini-3.5-flash` |
 | **Prompt Injection Defense** | $\ge 95.0\%$ | **100.0%** | Tested against direct and indirect adversarial prompts |
 
 ---
 
-## 4. User Interface & Screenshots
-
-| Grounded Clinical Research Chat | Simplified Executive Evaluation View |
-| :---: | :---: |
-| ![Chat UI](docs/screenshots/chat-desktop-dark.png) | ![Eval UI](docs/screenshots/documents-desktop.png) |
-
----
-
-## 5. Quickstart (Local Development)
+## 4. Quickstart (Local Development)
 
 ### Prerequisites
 - Docker & Docker Compose
@@ -131,7 +146,7 @@ cd RAG-FOR-ENTERPRISE-
 
 # Copy environment template
 cp .env.example .env
-# Edit .env and insert your GROQ_API_KEY (from https://console.groq.com)
+# Edit .env and insert your GROQ_API_KEY and GEMINI_API_KEY
 ```
 
 ### Step 2: Start Infrastructure (Postgres + Redis)
@@ -139,7 +154,7 @@ cp .env.example .env
 make up
 ```
 
-### Step 3: Populate Demo Clinical Labels
+### Step 3: Populate Demo Clinical Labels & Sample Documents
 ```bash
 make demo-data
 ```
@@ -162,9 +177,22 @@ Open `http://localhost:3001` in your browser.
 
 ---
 
+## 5. Testing the Multimodal & Clinical Features
+
+You can test both text and diagram extraction using the included sample documents in `data/`:
+
+| Test Category | Target Document | Sample Question | Expected Behavior |
+| :--- | :--- | :--- | :--- |
+| **Multimodal PK Diagram** | `Keytruda_Clinical_Pharmacokinetics_Study.pdf` | *"According to Figure 1 on Page 2, what is the peak concentration (Cmax) and trough concentration (Cmin) over the 21-day cycle?"* | Extracts $C_{\max} \approx 92\ \mu\text{g/mL}$ and $C_{\min} \approx 22\ \mu\text{g/mL}$ citing `Figure (Page 2)`. |
+| **Grounded Text QA** | Any FDA Drug Label (e.g. *Ozempic*, *Lisinopril*) | *"What is the boxed warning for Ozempic?"* | Direct, formatted answer citing thyroid C-cell tumor warnings with exact verbatim quotes. |
+| **Hallucination Refusal** | Any FDA Drug Label | *"Does the Keytruda label list any contraindications for patients with renal impairment?"* | Correctly states no contraindications are listed, refusing to fabricate clinical claims. |
+| **Scanned PDF Check** | `021923_s000_Nexavar_BioPharmR.pdf` | Upload file to Documents dashboard | Automatically diagnoses 0 digital text layers, flags status as `FAILED`, and prompts for OCR. |
+
+---
+
 ## 6. Free Cloud Deployment Guide
 
-Cite is architected to run **100% free** without paid infrastructure:
+Cite is architected to run **100% free** without paid cloud infrastructure:
 
 | Component | Free Platform | Setup |
 |---|---|---|
@@ -181,13 +209,15 @@ Cite is architected to run **100% free** without paid infrastructure:
 ├── apps/
 │   ├── api/                 # FastAPI REST API, auth dependencies & routers
 │   ├── web/                 # React 18, Vite, Tailwind CSS web interface
-│   └── worker/              # Background ARQ worker for async document ingestion
+│   └── worker/              # Background worker for async document ingestion
 ├── packages/
 │   ├── agent/               # Reasoning loop, citations, and tools (search, compare, calculator)
-│   ├── llm/                 # Unified LLM Gateway (Groq, Gemini, Ollama) with rate limiting
-│   ├── rag/                 # Structure-aware chunking, embeddings, hybrid search & reranking
+│   ├── llm/                 # Unified LLM Gateway (Groq, Gemini, Ollama) with vision & rate limiters
+│   ├── rag/                 # Structure-aware chunking, embeddings, hybrid search, reranking & multimodal
 │   └── mcp/                 # Model Context Protocol server implementation
-├── data/demo_labels/        # Seed FDA clinical package inserts (Lisinopril, Metoprolol, etc.)
+├── data/
+│   ├── demo_labels/         # Seed FDA clinical package inserts (Lisinopril, Metoprolol, Semaglutide)
+│   └── Keytruda_Clinical_Pharmacokinetics_Study.pdf  # Sample multimodal study with embedded PK curve
 ├── docs/                    # Architecture Decision Records (ADRs) & limitations
 ├── eval/                    # Golden benchmark dataset, metrics calculation, and CI gate
 ├── scripts/                 # Utility scripts for data fetching and MCP execution
