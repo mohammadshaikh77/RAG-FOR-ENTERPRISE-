@@ -31,12 +31,12 @@ class VisionCaptioner:
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "gemini-3.5-flash",
+        model: str | None = None,
         rate_limit_rpm: int = 8,
         timeout: float = 25.0,
     ) -> None:
         self.api_key = api_key or settings.gemini_api_key
-        self.model = model
+        self.model = model or settings.gemini_model or "gemini-3.5-flash"
         self.timeout = timeout
         self.rate_limiter = TokenBucketLimiter(requests_per_minute=rate_limit_rpm, name="gemini_vision")
         self._cache: dict[str, str] = {}

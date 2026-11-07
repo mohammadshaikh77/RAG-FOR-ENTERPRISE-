@@ -59,7 +59,7 @@ class SearchDocumentsTool(BaseTool):
             )
 
         section_filter = kwargs.get("section_filter")
-        top_k = min(int(kwargs.get("top_k", 5)), 10)
+        top_k = min(int(kwargs.get("top_k", 5)), 5)
 
         async with self.session_factory() as session:
             try:

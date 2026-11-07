@@ -153,7 +153,21 @@ class AgentLoop:
             step = AgentStep(step_index=step_idx)
 
             try:
-                # Call LLM Gateway
+                # If we already retrieved document passages on a previous step,
+                # guide the model to synthesize the final answer rather than endlessly looping.
+                if step_idx >= 2 and retrieved_chunks_accumulator:
+                    messages.append(
+                        ChatMessage(
+                            role="user",
+                            content=(
+                                "You have retrieved relevant document passages. "
+                                "Synthesize your final, grounded answer directly now based strictly on the retrieved passages above. "
+                                "Include verbatim inline citations in the format [Document: <Title> | Section: <Section> | \"<verbatim quote>\"]. "
+                                "Do NOT make any more tool calls."
+                            ),
+                        )
+                    )
+
                 llm_resp = await self.gateway.generate_with_tools(
                     messages=messages,
                     tools=self.tool_definitions,
