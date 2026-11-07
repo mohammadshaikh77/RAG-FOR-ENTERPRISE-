@@ -61,6 +61,11 @@ class Settings(BaseSettings):
         default="cross-encoder/ms-marco-TinyBERT-L-2-v2", alias="RERANKER_MODEL"
     )
 
+    # Multimodal Vision Settings
+    multimodal_enabled: bool = Field(default=False, alias="MULTIMODAL_ENABLED")
+    multimodal_max_images_per_doc: int = Field(default=10, alias="MULTIMODAL_MAX_IMAGES_PER_DOC")
+    multimodal_min_dimension: int = Field(default=150, alias="MULTIMODAL_MIN_DIMENSION")
+
     # Rate Limiting
     rate_limit_groq_rpm: int = Field(default=25, alias="RATE_LIMIT_GROQ_RPM")
     rate_limit_gemini_rpm: int = Field(default=12, alias="RATE_LIMIT_GEMINI_RPM")
