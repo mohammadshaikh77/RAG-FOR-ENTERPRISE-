@@ -34,12 +34,26 @@ export function UploadZone({ onUploadComplete }) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        await uploadDocument(file);
-        setUploadingFiles((prev) =>
-          prev.map((item, idx) =>
-            idx === i ? { ...item, status: "completed" } : item
-          )
-        );
+        const res = await uploadDocument(file);
+        if (res && res.status === "failed") {
+          setUploadingFiles((prev) =>
+            prev.map((item, idx) =>
+              idx === i
+                ? {
+                    ...item,
+                    status: "error",
+                    error: res.error_message || "Document processing failed (0 chunks indexed)",
+                  }
+                : item
+            )
+          );
+        } else {
+          setUploadingFiles((prev) =>
+            prev.map((item, idx) =>
+              idx === i ? { ...item, status: "completed" } : item
+            )
+          );
+        }
       } catch (err) {
         setUploadingFiles((prev) =>
           prev.map((item, idx) =>
@@ -148,9 +162,15 @@ export function UploadZone({ onUploadComplete }) {
                 <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
               )}
               {item.status === "error" && (
-                <span className="text-danger text-[10px] truncate max-w-[150px]">
-                  {item.error || "Failed"}
-                </span>
+                <div
+                  className="flex items-center gap-1 text-danger text-[10px]"
+                  title={item.error}
+                >
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate max-w-[180px]">
+                    {item.error || "Failed"}
+                  </span>
+                </div>
               )}
             </div>
           ))}

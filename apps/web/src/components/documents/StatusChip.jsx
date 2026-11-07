@@ -2,7 +2,7 @@ import React from "react";
 import { AlertCircle, CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { Badge } from "../ui/Badge.jsx";
 
-export function StatusChip({ status }) {
+export function StatusChip({ status, error }) {
   const norm = (status || "").toLowerCase();
 
   if (norm === "completed" || norm === "ready") {
@@ -25,7 +25,7 @@ export function StatusChip({ status }) {
 
   if (norm === "failed") {
     return (
-      <Badge variant="danger">
+      <Badge variant="danger" title={error || "Ingestion failed"}>
         <AlertCircle className="h-3 w-3 text-danger shrink-0" />
         <span>Failed</span>
       </Badge>
@@ -37,10 +37,9 @@ export function StatusChip({ status }) {
     : "Queued";
 
   return (
-    <Badge variant="default">
+    <Badge variant="default" title={error}>
       <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
       <span>{label}</span>
     </Badge>
   );
 }
-

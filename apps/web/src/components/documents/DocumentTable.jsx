@@ -102,7 +102,7 @@ export function DocumentTable({
                     </td>
 
                     <td className="px-4 py-3">
-                      <StatusChip status={doc.status} />
+                      <StatusChip status={doc.status} error={doc.error_message} />
                     </td>
 
                     <td className="px-4 py-3 text-right font-mono font-semibold text-foreground">

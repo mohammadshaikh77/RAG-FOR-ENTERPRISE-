@@ -99,7 +99,7 @@ class IngestionService:
         else:
             file_hash = self.compute_hash(raw_content)
 
-        # 1. Idempotency Check
+        # 1. Idempotency Check: only skip if successfully completed with usable chunks > 0
         stmt = select(Document).where(
             Document.org_id == org_id,
             Document.file_hash == file_hash,
@@ -107,7 +107,11 @@ class IngestionService:
         result = await session.execute(stmt)
         existing_doc = result.scalar_one_or_none()
 
-        if existing_doc and existing_doc.status == DocumentStatus.COMPLETED:
+        if (
+            existing_doc
+            and existing_doc.status == DocumentStatus.COMPLETED
+            and existing_doc.chunk_count > 0
+        ):
             logger.info(
                 "Document already exists and completed. Skipping re-ingestion.",
                 document_id=str(existing_doc.id),
@@ -119,6 +123,7 @@ class IngestionService:
         # Create or update document record
         if existing_doc:
             doc = existing_doc
+            doc.title = title
             doc.status = DocumentStatus.PROCESSING
             doc.error_message = None
         else:
@@ -140,46 +145,53 @@ class IngestionService:
             parsed = self.parse_content(raw_content, file_type=file_type, title=title)
             merged_metadata = {**doc.doc_metadata, **parsed.metadata}
             doc.doc_metadata = merged_metadata
-            doc.title = parsed.title or title
+
+            # Preserve human-given title unless generic
+            if title and title.strip().lower() not in {
+                "untitled document",
+                "untitled pdf",
+                "cpy document",
+                "untitled",
+            }:
+                doc.title = title
+            else:
+                doc.title = parsed.title or title
 
             # 3. Chunk
             chunk_items = self.chunker.chunk(parsed)
-            if not chunk_items:
-                doc.status = DocumentStatus.COMPLETED
-                doc.chunk_count = 0
-                await session.commit()
-                return doc, False
-
-            # 4. Embed
-            texts_to_embed = [c.content for c in chunk_items]
-            embeddings = self.embedder.embed_texts(texts_to_embed)
-
-            # 5. Persist Chunks
             chunks_to_insert: list[DocumentChunk] = []
-            for item, emb in zip(chunk_items, embeddings, strict=False):
-                chunk = DocumentChunk(
-                    id=uuid.uuid4(),
-                    document_id=doc.id,
-                    org_id=org_id,
-                    chunk_index=item.chunk_index,
-                    section_title=item.section_title,
-                    section_path=item.section_path,
-                    page_number=item.page_number,
-                    content=item.content,
-                    token_count=item.token_count,
-                    chunk_metadata={
-                        **item.metadata,
-                        "embedding_model": self.embedder.model_name,
-                    },
-                    embedding=emb,
-                )
-                chunks_to_insert.append(chunk)
 
-            # 6. Optional Multimodal Diagram Extraction and Vision Captioning
+            # 4. Embed text chunks if present
+            if chunk_items:
+                texts_to_embed = [c.content for c in chunk_items]
+                embeddings = self.embedder.embed_texts(texts_to_embed)
+
+                for item, emb in zip(chunk_items, embeddings, strict=False):
+                    chunk = DocumentChunk(
+                        id=uuid.uuid4(),
+                        document_id=doc.id,
+                        org_id=org_id,
+                        chunk_index=item.chunk_index,
+                        section_title=item.section_title,
+                        section_path=item.section_path,
+                        page_number=item.page_number,
+                        content=item.content,
+                        token_count=item.token_count,
+                        chunk_metadata={
+                            **item.metadata,
+                            "embedding_model": self.embedder.model_name,
+                        },
+                        embedding=emb,
+                    )
+                    chunks_to_insert.append(chunk)
+
+            # 5. Optional Multimodal Diagram Extraction and Vision Captioning
+            # Only run for documents that have actual figure content (skip purely scanned documents)
             if (
                 settings.multimodal_enabled
                 and isinstance(raw_content, bytes)
                 and raw_content.startswith(b"%PDF")
+                and not parsed.metadata.get("is_scanned")
             ):
                 try:
                     figures = self.image_extractor.extract_figures(raw_content)
@@ -238,8 +250,37 @@ class IngestionService:
                         error=str(mm_err),
                     )
 
+            # 6. Critical Ingestion Status Verification
+            # The application must NEVER mark a document Ready when zero usable sections have been processed!
+            if not chunks_to_insert:
+                if parsed.metadata.get("is_scanned"):
+                    page_cnt = parsed.metadata.get("page_count", 0)
+                    error_msg = (
+                        f"Scanned PDF detected ({page_cnt} pages). "
+                        f"Document contains scanned images without an embedded digital text layer. "
+                        f"Optical Character Recognition (OCR) is required."
+                    )
+                else:
+                    error_msg = "No extractable text or sections found in document. Cannot index empty content."
+
+                doc.status = DocumentStatus.FAILED
+                doc.chunk_count = 0
+                doc.error_message = error_msg
+                await session.commit()
+                await session.refresh(doc)
+                logger.warning(
+                    "Document ingestion failed: 0 chunks processed",
+                    document_id=str(doc.id),
+                    title=doc.title,
+                    error=error_msg,
+                )
+                return doc, False
+
+            # 7. Persist chunks and update document to COMPLETED
             session.add_all(chunks_to_insert)
             doc.chunk_count = len(chunks_to_insert)
+            doc.error_message = None
+            doc.status = DocumentStatus.COMPLETED
 
             # Extract and persist structured drug metadata if available
             if "drug_name" in merged_metadata or "generic_name" in merged_metadata:
@@ -283,7 +324,6 @@ class IngestionService:
                 )
                 session.add(drug_meta)
 
-            doc.status = DocumentStatus.COMPLETED
             await session.commit()
             await session.refresh(doc)
 
@@ -299,5 +339,5 @@ class IngestionService:
             await session.rollback()
             doc.status = DocumentStatus.FAILED
             doc.error_message = str(e)
-            logger.error("Document ingestion failed", error=str(e), document_id=str(doc.id))
+            logger.error("Document ingestion failed with unhandled exception", error=str(e), document_id=str(doc.id))
             raise

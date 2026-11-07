@@ -1,10 +1,10 @@
-"""Lightweight, memory-safe PDF diagram and image extraction using PyMuPDF (fitz)."""
+"""Lightweight, memory-safe PDF diagram and image extraction using PyMuPDF."""
 
 import hashlib
 import re
 from dataclasses import dataclass
 
-import fitz
+import pymupdf
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -43,12 +43,12 @@ class PDFImageExtractor:
         self.max_pixels = max_pixels
 
     def extract_figures(self, pdf_bytes: bytes) -> list[ExtractedFigure]:
-        """Extracts high-signal diagrams, skipping tiny icons, lines, and duplicates."""
+        """Extracts high-signal diagrams, skipping tiny icons, full-page scans, and duplicates."""
         figures: list[ExtractedFigure] = []
         seen_hashes: set[str] = set()
 
         try:
-            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
         except Exception as e:
             logger.error("Failed to open PDF with PyMuPDF", error=str(e))
             return []
@@ -60,6 +60,7 @@ class PDFImageExtractor:
 
                 page = doc[page_idx]
                 page_num = page_idx + 1
+                page_area = page.rect.get_area() if page.rect else 1.0
 
                 # Gather potential figure captions from the text on this page
                 page_text = page.get_text() or ""
@@ -71,6 +72,18 @@ class PDFImageExtractor:
                 for img_info in image_list:
                     if len(figures) >= self.max_images_per_doc:
                         break
+
+                    # Check bounding box on page: if it occupies >85% of the page
+                    # and there is no explicit figure hint, this is a full-page scan, not a diagram!
+                    try:
+                        bbox = page.get_image_bbox(img_info)
+                        if bbox and page_area > 0:
+                            coverage = bbox.get_area() / page_area
+                            if coverage > 0.85 and not caption_hint:
+                                # Full-page scanned document page; skip as diagram
+                                continue
+                    except Exception:
+                        pass
 
                     xref = img_info[0]
                     try:
@@ -106,12 +119,12 @@ class PDFImageExtractor:
                     processed_bytes = img_bytes
                     if max(width, height) > self.max_pixels:
                         try:
-                            pix = fitz.Pixmap(img_bytes)
+                            pix = pymupdf.Pixmap(img_bytes)
                             scale = self.max_pixels / max(width, height)
                             # Create scaled down pixmap
                             target_w = max(1, int(width * scale))
                             target_h = max(1, int(height * scale))
-                            scaled_pix = fitz.Pixmap(
+                            scaled_pix = pymupdf.Pixmap(
                                 pix.colorspace, (0, 0, target_w, target_h), pix.alpha
                             )
                             # Export as png bytes

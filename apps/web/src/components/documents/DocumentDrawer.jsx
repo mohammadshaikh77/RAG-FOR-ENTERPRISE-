@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { FileText, Hash, X } from "lucide-react";
+import { AlertCircle, FileText, Hash, X } from "lucide-react";
 import { getDocument, getDocumentChunks } from "../../api/documents.js";
 import { Badge } from "../ui/Badge.jsx";
 import { Skeleton } from "../ui/Skeleton.jsx";
@@ -58,13 +58,23 @@ export function DocumentDrawer({ documentId, onClose }) {
           </div>
         ) : doc ? (
           <div className="space-y-4">
+            {doc.error_message && (
+              <div className="p-3.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs space-y-1">
+                <div className="font-semibold flex items-center gap-1.5 text-red-300">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+                  <span>Ingestion Issue</span>
+                </div>
+                <p className="text-[11px] leading-relaxed opacity-90">{doc.error_message}</p>
+              </div>
+            )}
+
             {/* Metadata Card */}
             <div className="p-3.5 rounded-lg border border-border bg-surface-subtle/30 space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground font-medium">
                   Ingestion Status:
                 </span>
-                <StatusChip status={doc.status} />
+                <StatusChip status={doc.status} error={doc.error_message} />
               </div>
 
               <div className="flex items-center justify-between">
