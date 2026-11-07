@@ -9,8 +9,6 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ".:apps/api/src:packages/llm/src:packages/rag/src:packages/agent/src:packages/mcp/src"
 
     services:
       postgres:
@@ -55,6 +53,7 @@ jobs:
       - name: Initialize DB Schema
         env:
           DATABASE_URL: postgresql+asyncpg://cite_user:cite_password@localhost:5434/cite_db
+          PYTHONPATH: "."
         run: |
           python -m apps.api.src.db.init_db
 
@@ -70,6 +69,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://cite_user:cite_password@localhost:5434/cite_db
           REDIS_URL: redis://localhost:6381/0
+          PYTHONPATH: "."
         run: |
           pytest -v
 
