@@ -37,8 +37,13 @@ export async function apiFetch(path, options = {}) {
   }
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const url = `/api${normalizedPath}`;
+  const apiBaseUrl = (
+  import.meta.env.VITE_API_URL || ""
+).replace(/\/+$/, "");
 
+const url = apiBaseUrl
+  ? `${apiBaseUrl}${normalizedPath}`
+  : `/api${normalizedPath}`;
   const response = await fetch(url, {
     ...options,
     headers,
